@@ -16,21 +16,24 @@ func TestParseTarget(t *testing.T) {
 		{"https://github.com/owner/repo/pull/45/changes#diff-0a1b", "owner/repo", 45, "changes"},
 		{"https://github.com/owner/repo/pull/45/checks?check_run_id=9", "owner/repo", 45, "checks"},
 		{"https://github.com/owner/repo/pull/45#issuecomment-7", "owner/repo", 45, ""},
-		{"github.com/owner/repo/pull/45", "", 0, ""},
 	}
 	for _, each := range cases {
-		repository, number, tab, err := parseTarget(each.target, "here/repo")
-		if each.number == 0 {
-			if err == nil {
-				t.Errorf("%q should not parse, got %s#%d", each.target, repository, number)
-			}
+		if !pullRequestReference.MatchString(each.target) {
+			t.Errorf("%q should be read as a PR reference", each.target)
 			continue
 		}
+		repository, number, tab, err := parseTarget(each.target, "here/repo")
 		if err != nil || repository != each.repository || number != each.number || tab != each.tab {
 			t.Errorf("%q = %s#%d tab %q (%v), want %s#%d tab %q", each.target, repository, number, tab, err, each.repository, each.number, each.tab)
 		}
 	}
 	if _, _, _, err := parseTarget("123", ""); err == nil {
 		t.Error("a bare number outside a repository cannot name a PR")
+	}
+	// Everything else is a branch name, slashes included.
+	for _, branch := range []string{"HEAD", "main", "feat/stack-view", "release-1.2", "github.com/owner/repo/pull/45"} {
+		if pullRequestReference.MatchString(branch) {
+			t.Errorf("%q should be left to be read as a branch", branch)
+		}
 	}
 }

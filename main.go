@@ -20,14 +20,12 @@ import (
 )
 
 // A PR is named by its number, as owner/repo#number, or by any github.com URL
-// of it, including the ones copied from a tab (".../pull/12/files").
+// of it, including the ones copied from a tab (".../pull/12/files"). Anything
+// else on the command line is taken as a branch name.
 var pullRequestReference = regexp.MustCompile(`^(?:https?://github\.com/)?(?:([\w.-]+/[\w.-]+)(?:#|/pull/))?(\d+)(?:/(\w+))?(?:[/?#].*)?$`)
 
 func parseTarget(target, currentRepository string) (repository string, number int, tab string, err error) {
 	match := pullRequestReference.FindStringSubmatch(target)
-	if match == nil {
-		return "", 0, "", fmt.Errorf("cannot read %q as a pull request", target)
-	}
 	repository = match[1]
 	if repository == "" {
 		repository = currentRepository
@@ -42,7 +40,7 @@ func parseTarget(target, currentRepository string) (repository string, number in
 func main() {
 	configPath := flag.String("config", "", "config file layered over gh-dash's global one")
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "usage: gh sift [--config file] [number | owner/repo#number | PR url]")
+		fmt.Fprintln(os.Stderr, "usage: gh sift [--config file] [number | owner/repo#number | PR url | branch | HEAD]")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -64,18 +62,35 @@ func run(configPath, target string) error {
 	}
 
 	var err error
-	if target != "" {
-		if options.OpenRepository, options.OpenNumber, options.OpenTab, err = parseTarget(target, options.Repository); err != nil {
-			return err
-		}
-	}
-
 	if options.Config, err = config.Load(configPath, options.RepositoryPath); err != nil {
 		return err
 	}
 	if options.Client, err = gh.NewClient(); err != nil {
 		return err
 	}
+
+	switch {
+	case target == "":
+	case pullRequestReference.MatchString(target):
+		if options.OpenRepository, options.OpenNumber, options.OpenTab, err = parseTarget(target, options.Repository); err != nil {
+			return err
+		}
+	default:
+		branch := target
+		// HEAD is git's own name for the branch you are on.
+		if target == "HEAD" {
+			current, _ := exec.Command("git", "branch", "--show-current").Output()
+			branch = strings.TrimSpace(string(current))
+		}
+		if options.Repository == "" || branch == "" {
+			return fmt.Errorf("%q names a branch, which needs a checkout of a GitHub repository on a branch", target)
+		}
+		options.OpenRepository = options.Repository
+		if options.OpenNumber, err = options.Client.PullRequestForBranch(options.Repository, branch); err != nil {
+			return err
+		}
+	}
+
 	app, err := ui.New(options)
 	if err != nil {
 		return err

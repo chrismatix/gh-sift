@@ -485,3 +485,36 @@ func (client *Client) Diff(repository string, number int) (string, error) {
 		}
 	}
 }
+
+// PullRequestForBranch finds the PR whose head is the branch: the open one
+// if there is one, else the most recent, as `gh pr view <branch>` does.
+func (client *Client) PullRequestForBranch(repository, branch string) (int, error) {
+	owner, name, _ := strings.Cut(repository, "/")
+	var response struct {
+		Repository struct {
+			PullRequests nodeList[struct {
+				Number int
+				State  string
+			}]
+		}
+	}
+	err := client.query(`
+query($owner: String!, $name: String!, $branch: String!) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(headRefName: $branch, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { number state } }
+  }
+}`, map[string]any{"owner": owner, "name": name, "branch": branch}, &response)
+	if err != nil {
+		return 0, err
+	}
+	found := response.Repository.PullRequests.Nodes
+	if len(found) == 0 {
+		return 0, fmt.Errorf("no pull request in %s for branch %s", repository, branch)
+	}
+	for _, pullRequest := range found {
+		if pullRequest.State == "OPEN" {
+			return pullRequest.Number, nil
+		}
+	}
+	return found[0].Number, nil
+}

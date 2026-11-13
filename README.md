@@ -36,7 +36,7 @@ go build -o gh-sift .
 gh extension install .
 ```
 
-Then run `gh sift`, or `gh sift 123` to open a PR directly.
+Then run `gh sift`, or open one PR directly with `gh sift 123`, a PR URL, or `gh sift HEAD` for the branch you are on.
 
 ## Inspirations
 

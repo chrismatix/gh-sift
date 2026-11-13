@@ -5,6 +5,8 @@ gh sift                      # the list, from your gh-dash config
 gh sift 123                  # PR 123 of the repository you are in
 gh sift owner/repo#123       # any PR
 gh sift <PR URL>             # as copied from the browser; /files and /checks open that tab
+gh sift HEAD                 # the PR of the branch you are on
+gh sift my-branch            # the PR of another branch: the open one, else the latest
 gh sift --config other.yml   # a config layered over the global one
 ```
 
