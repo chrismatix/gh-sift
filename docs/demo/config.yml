@@ -1,0 +1,8 @@
+prSections:
+    - title: My Pull Requests
+      filters: repo:chrismatix/sift-playground is:open author:@me
+    - title: Recently closed
+      filters: repo:chrismatix/sift-playground is:closed
+issuesSections:
+    - title: Issues
+      filters: repo:chrismatix/sift-playground is:open
