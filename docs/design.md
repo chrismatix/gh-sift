@@ -30,24 +30,13 @@ gh-dash (Go, Bubble Tea v2, Lip Gloss v2) is a list with a preview pane.
   with a thick rule under it, a one-line footer on the selection background.
   Colour is used for state only.
 
-What does not carry over: the fork's `prypane` runs `gh pry` in a pseudo
-terminal inside the preview, and `gh pry` hands a diff command back over file
-descriptor 3 so gh-dash can run hunk full-screen. Three processes, two
-terminal emulations, and no shared state: marking something in hunk is
-invisible to the other two.
+## Review of hunk
 
-## Review of gh pry and hunk
-
-- **gh pry** has the right content for a PR: a conversation timeline, checks
-  with job steps and the tail of the failed log, review threads with CodeRabbit
-  severity, the stack drawn top first, and stack-aware merging through
-  `gh stack merge`. Its GraphQL is reused almost verbatim. Its list-plus-preview
-  split is cramped; sift gives each tab the full screen.
-- **hunk** has the right reading experience: one continuous scroll through all
-  files, a file tree on the left, a coloured rail per row that dims outside the
-  current hunk, split and stacked layouts, word-level emphasis, notes drawn as
-  cards under their line. Sift copies that structure, keymap and palette
-  (GitHub dark/light).
+hunk has the right reading experience: one continuous scroll through all files,
+a file tree on the left, a coloured rail per row that dims outside the current
+hunk, split and stacked layouts, word-level emphasis, notes drawn as cards
+under their line. Sift copies that structure, keymap and palette (GitHub
+dark/light).
 
 ## Decisions
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Records docs/screenshots/demo.gif from docs/demo/demo.tape with VHS.
+# Records docs/demo/demo.gif from docs/demo/demo.tape with VHS.
 #
 # VHS runs from its Docker image, which brings a browser that works. The tour
 # drives a real repository, chrismatix/sift-playground, and writes to it (a
@@ -35,5 +35,5 @@ GH_TOKEN=$(gh auth token) docker run --rm -e GH_TOKEN \
 	-v "$stage":/vhs -v "$fonts":/usr/share/fonts/truetype/nerd:ro \
 	ghcr.io/charmbracelet/vhs demo.tape
 
-cp "$stage/demo.gif" "$root/docs/screenshots/demo.gif"
-echo "$root/docs/screenshots/demo.gif"
+cp "$stage/demo.gif" "$root/docs/demo/demo.gif"
+echo "$root/docs/demo/demo.gif"
