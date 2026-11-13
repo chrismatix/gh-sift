@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -161,8 +162,7 @@ func (screen *pullRequestScreen) handleKey(app *App, pressed string) tea.Cmd {
 
 	switch pressed {
 	case "esc", "q":
-		app.screen = screenList
-		return nil
+		return app.leave(pressed)
 	case "1":
 		return screen.setTab(app, tabOverview)
 	case "2":
@@ -287,13 +287,18 @@ func (screen *pullRequestScreen) startReview(app *App) tea.Cmd {
 
 func (screen *pullRequestScreen) hints(app *App) string {
 	common := " · K/J stack · a review · m merge · esc back"
+	hints := "j/k scroll · c comment · d diff" + common
 	switch screen.tab {
 	case tabChecks:
-		return screen.checks.hints()
+		hints = screen.checks.hints()
 	case tabThreads:
-		return "j/k move · r reply · x resolve · h resolved · enter show in diff" + common
+		hints = "j/k move · r reply · x resolve · h resolved · enter show in diff" + common
 	case tabFiles:
-		return screen.diff.hints(app)
+		hints = screen.diff.hints(app)
 	}
-	return "j/k scroll · c comment · d diff" + common
+	// Opened directly on a PR, leaving it means quitting.
+	if app.initial.number > 0 && (screen.tab != tabFiles || screen.diff.returnToList) {
+		hints = strings.Replace(hints, "esc back", "q quit", 1)
+	}
+	return hints
 }

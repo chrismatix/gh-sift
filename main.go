@@ -19,7 +19,25 @@ import (
 	"github.com/chrismatix/gh-sift/internal/ui"
 )
 
-var pullRequestReference = regexp.MustCompile(`^(?:https://github\.com/)?(?:([\w.-]+/[\w.-]+)(?:#|/pull/))?(\d+)$`)
+// A PR is named by its number, as owner/repo#number, or by any github.com URL
+// of it, including the ones copied from a tab (".../pull/12/files").
+var pullRequestReference = regexp.MustCompile(`^(?:https?://github\.com/)?(?:([\w.-]+/[\w.-]+)(?:#|/pull/))?(\d+)(?:/(\w+))?(?:[/?#].*)?$`)
+
+func parseTarget(target, currentRepository string) (repository string, number int, tab string, err error) {
+	match := pullRequestReference.FindStringSubmatch(target)
+	if match == nil {
+		return "", 0, "", fmt.Errorf("cannot read %q as a pull request", target)
+	}
+	repository = match[1]
+	if repository == "" {
+		repository = currentRepository
+	}
+	if repository == "" {
+		return "", 0, "", fmt.Errorf("not inside a repository: name the PR as owner/repo#%s", match[2])
+	}
+	number, _ = strconv.Atoi(match[2])
+	return repository, number, match[3], nil
+}
 
 func main() {
 	configPath := flag.String("config", "", "config file layered over gh-dash's global one")
@@ -45,22 +63,13 @@ func run(configPath, target string) error {
 		options.RepositoryPath = strings.TrimSpace(string(root))
 	}
 
+	var err error
 	if target != "" {
-		match := pullRequestReference.FindStringSubmatch(target)
-		if match == nil {
-			return fmt.Errorf("cannot read %q as a pull request", target)
+		if options.OpenRepository, options.OpenNumber, options.OpenTab, err = parseTarget(target, options.Repository); err != nil {
+			return err
 		}
-		options.OpenRepository = match[1]
-		if options.OpenRepository == "" {
-			options.OpenRepository = options.Repository
-		}
-		if options.OpenRepository == "" {
-			return fmt.Errorf("not inside a repository: name the PR as owner/repo#%s", match[2])
-		}
-		options.OpenNumber, _ = strconv.Atoi(match[2])
 	}
 
-	var err error
 	if options.Config, err = config.Load(configPath, options.RepositoryPath); err != nil {
 		return err
 	}

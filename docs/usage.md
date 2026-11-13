@@ -3,9 +3,13 @@
 ```shell
 gh sift                      # the list, from your gh-dash config
 gh sift 123                  # PR 123 of the repository you are in
-gh sift owner/repo#123       # any PR; a PR URL works too
+gh sift owner/repo#123       # any PR
+gh sift <PR URL>             # as copied from the browser; /files and /checks open that tab
 gh sift --config other.yml   # a config layered over the global one
 ```
+
+Opened on a PR, sift shows the same PR view as from the list, without loading
+the list. `q` quits from there.
 
 Sift reads `~/.config/gh-dash/config.yml` (and `$GH_DASH_CONFIG`, and
 `.gh-dash.yml` in the repository) and never writes to it. Without one it uses

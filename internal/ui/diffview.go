@@ -57,7 +57,7 @@ type diffView struct {
 	hideSidebar bool
 	// Show read hunks dimmed instead of folding them away.
 	dimRead bool
-	// Leaving the diff returns to the list when it was opened from there.
+	// Leaving the diff leaves the PR when the diff is what was opened.
 	returnToList bool
 	// A thread to put the cursor on once the diff has loaded.
 	pendingThread string
@@ -456,8 +456,7 @@ func (view *diffView) handleKey(app *App, pressed string) tea.Cmd {
 		fallthrough
 	case "q":
 		if view.returnToList {
-			app.screen = screenList
-			return nil
+			return app.leave(pressed)
 		}
 		app.pullRequest.tab = tabOverview
 		return nil

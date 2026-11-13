@@ -67,6 +67,7 @@ type App struct {
 
 	// The PR named on the command line, opened instead of the list.
 	initial     pullRequestKey
+	initialTab  pullRequestTab
 	screen      screen
 	list        listScreen
 	pullRequest pullRequestScreen
@@ -86,9 +87,11 @@ type Options struct {
 	Client         *gh.Client
 	Repository     string
 	RepositoryPath string
-	// Open this PR directly instead of the list.
+	// Open this PR directly instead of the list. OpenTab is the last part
+	// of a PR URL ("files", "checks") and picks the tab; empty is the overview.
 	OpenRepository string
 	OpenNumber     int
+	OpenTab        string
 }
 
 func New(options Options) (*App, error) {
@@ -114,6 +117,7 @@ func New(options Options) (*App, error) {
 	}
 	app.list = newListScreen(app)
 	app.initial = pullRequestKey{options.OpenRepository, options.OpenNumber}
+	app.initialTab = map[string]pullRequestTab{"files": tabFiles, "changes": tabFiles, "checks": tabChecks}[options.OpenTab]
 	return app, nil
 }
 
@@ -148,11 +152,27 @@ func (app *App) Init() tea.Cmd {
 			return viewerMsg(login)
 		},
 	}
-	commands = append(commands, app.list.fetchAll(app)...)
+	// Opened on one PR, the list is never shown, so its searches are not run.
 	if app.initial.number > 0 {
-		commands = append(commands, app.openPullRequest(app.initial, nil, tabOverview))
+		commands = append(commands, app.openPullRequest(app.initial, nil, app.initialTab), app.pullRequest.setTab(app, app.initialTab))
+	} else {
+		commands = append(commands, app.list.fetchAll(app)...)
 	}
 	return tea.Batch(commands...)
+}
+
+// leave goes back from the top of the PR view. Opened from the list, that is
+// the list. Opened directly on a PR there is nothing behind it, so q quits
+// and esc, which is too easy to hit twice, does nothing.
+func (app *App) leave(pressed string) tea.Cmd {
+	if app.initial.number == 0 {
+		app.screen = screenList
+		return nil
+	}
+	if pressed == "q" {
+		return tea.Quit
+	}
+	return nil
 }
 
 // tick animates the spinner while something runs and otherwise only drives
