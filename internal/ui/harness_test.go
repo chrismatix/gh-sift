@@ -1,11 +1,12 @@
 package ui
 
 import (
+	"reflect"
 	"strings"
 	"testing"
-	"time"
 	"unicode/utf8"
 
+	"charm.land/bubbles/v2/cursor"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -53,9 +54,20 @@ func (harness *testApp) send(message tea.Msg) {
 	harness.run(command)
 }
 
-// run executes a command and feeds its messages back in. A command that
-// does not answer quickly is a timer (tea.Tick) and is dropped: tests send
-// tickMsg themselves when they want one.
+// Timers sleep, so run drops them instead of waiting: every tea.Tick and
+// every cursor blink is the same closure, which its code pointer identifies.
+// Tests send tickMsg themselves when they want the periodic work.
+var timerCode = map[uintptr]bool{
+	reflect.ValueOf(tea.Tick(0, nil)).Pointer():         true,
+	reflect.ValueOf(blinkingCursor().Blink()).Pointer(): true,
+}
+
+func blinkingCursor() *cursor.Model {
+	model := cursor.New()
+	return &model
+}
+
+// run executes a command and feeds its messages back in, until nothing is left.
 func (harness *testApp) run(command tea.Cmd) {
 	harness.t.Helper()
 	pending := []tea.Cmd{command}
@@ -65,18 +77,10 @@ func (harness *testApp) run(command tea.Cmd) {
 		}
 		next := pending[0]
 		pending = pending[1:]
-		if next == nil {
+		if next == nil || timerCode[reflect.ValueOf(next).Pointer()] {
 			continue
 		}
-		result := make(chan tea.Msg, 1)
-		go func() { result <- next() }()
-		var message tea.Msg
-		select {
-		case message = <-result:
-		case <-time.After(100 * time.Millisecond):
-			continue
-		}
-		switch message := message.(type) {
+		switch message := next().(type) {
 		case nil, tea.QuitMsg:
 		case tea.BatchMsg:
 			pending = append(pending, message...)
