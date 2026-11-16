@@ -41,6 +41,8 @@ type overlay struct {
 	textarea   textarea.Model
 	input      textinput.Model
 	submit     func(app *App, value string) tea.Cmd
+	// A review summary may be empty; every other composer needs text.
+	allowEmpty bool
 }
 
 func (app *App) openMenu(title string, items []menuItem, submit func(app *App, value string) tea.Cmd) {
@@ -132,7 +134,7 @@ func (app *App) updateOverlay(message tea.Msg) tea.Cmd {
 	case overlayComposer:
 		// ctrl+s is hunk's save, ctrl+d is gh-dash's submit.
 		if isKey && (key.String() == "ctrl+s" || key.String() == "ctrl+d") {
-			if value := strings.TrimSpace(current.textarea.Value()); value != "" {
+			if value := strings.TrimSpace(current.textarea.Value()); value != "" || current.allowEmpty {
 				return submit(value)
 			}
 			return nil

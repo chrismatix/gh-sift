@@ -276,10 +276,17 @@ func (screen *pullRequestScreen) startReview(app *App) tea.Cmd {
 			initial = app.config.Defaults.PrApproveComment
 		}
 		name := map[string]string{"COMMENT": "Comment", "APPROVE": "Approve", "REQUEST_CHANGES": "Request changes"}[event]
-		app.openComposer(name+" · review summary", initial, func(app *App, body string) tea.Cmd {
+		// GitHub refuses only a comment review that has neither a summary nor inline comments.
+		optional := event != "COMMENT" || pending > 0
+		title := name + " · review summary"
+		if !optional {
+			title += " (required without inline comments)"
+		}
+		app.openComposer(title, initial, func(app *App, body string) tea.Cmd {
 			return app.run("submitting review", func() error { return app.client.SubmitReview(detail.ID, detail.PendingReviewID, event, body) },
 				"review submitted: "+name, reload)
 		})
+		app.overlay.allowEmpty = optional
 		return nil
 	})
 	return nil
