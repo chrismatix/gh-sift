@@ -259,6 +259,10 @@ func (screen *pullRequestScreen) threadsView(app *App, height int) []string {
 					people = strings.Replace(people, "replys", "replies", 1)
 				}
 			}
+			// The latest comment, so a fresh reply on an old thread reads as recent.
+			if when := elapsed(thread.Comments[len(thread.Comments)-1].CreatedAt); when != "" {
+				people += " · " + when
+			}
 		}
 		// The file name and line matter most, so the directory gives way first.
 		location := fmt.Sprintf("%s:%d", shortPath(thread.Path, listWidth-width(people)-width(tags)-12), max(thread.Line, thread.OriginalLine))
