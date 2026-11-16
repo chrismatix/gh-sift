@@ -856,3 +856,20 @@ func TestListTabsAndSearchBarWhileWorking(t *testing.T) {
 		t.Error("the filters change only on enter")
 	}
 }
+
+// Before the first resize a real program reports a 0×0 window.
+func TestListViewSurvivesATinyWindow(t *testing.T) {
+	list := newTestApp(t, Options{})
+	diff := diffViewOpen(t, diffViewDefaultFixture())
+	for _, app := range []*testApp{list, diff} {
+		for _, tab := range []string{"1", "2", "3", "4"} {
+			if app == diff {
+				app.press(tab)
+			}
+			for _, width := range []int{0, 1, 2} {
+				app.send(tea.WindowSizeMsg{Width: width, Height: width})
+				_ = app.View()
+			}
+		}
+	}
+}

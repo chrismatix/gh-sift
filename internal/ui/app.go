@@ -209,7 +209,8 @@ func (app *App) spinner() string {
 func (app *App) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
-		app.width, app.height = message.Width, message.Height
+		// The layout assumes some room; a real program starts out reporting 0×0.
+		app.width, app.height = max(message.Width, 20), max(message.Height, 10)
 		app.pullRequest.diff.invalidate()
 		return app, nil
 

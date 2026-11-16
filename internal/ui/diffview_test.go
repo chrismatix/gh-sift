@@ -3,7 +3,6 @@ package ui
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/chrismatix/gh-sift/internal/diff"
 	"strings"
 	"testing"
 
@@ -193,8 +192,9 @@ func TestDiffViewLoadStates(t *testing.T) {
 		app.expectScreen("Loading the diff…")
 	})
 	t.Run("no files", func(t *testing.T) {
-		app := diffViewOpen(t, diffViewDefaultFixture())
-		app.send(diffLoadedMsg{key: app.pullRequest.key, head: "abc123", files: []diff.File{}})
+		fixture := diffViewDefaultFixture()
+		fixture.unified, fixture.files = "", nil
+		app := diffViewOpen(t, fixture)
 		app.expectScreen("This pull request changes no files.")
 		app.press("j", "x", "c")
 		if app.overlay != nil || len(app.github.Find("mutation")) != 0 {

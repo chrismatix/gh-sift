@@ -202,6 +202,9 @@ func TestHelperSummaryAndSeverity(t *testing.T) {
 			t.Errorf("severity(%q) = %q, want %q", each.body, got, each.severity)
 		}
 	}
+	if got := cleanBody("<img width=\"40\" alt=\"shot\" src=\"x.png\">"); got != "[image: shot]" {
+		t.Errorf("an image with alt text should keep it: %q", got)
+	}
 	if got := cleanBody("<img src=\"y.png\"> and ![](z.png)\r\n\n\n\nmore"); got != "and \n\nmore" {
 		t.Errorf("cleanBody = %q", got)
 	}

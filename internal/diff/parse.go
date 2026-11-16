@@ -82,7 +82,8 @@ func (hunk Hunk) Hash() string {
 var hunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@ ?(.*)$`)
 
 func Parse(unified string) []File {
-	var files []File
+	// Never nil: the diff view reads nil files as still loading.
+	files := []File{}
 	var file *File
 	var hunk *Hunk
 	oldNumber, newNumber := 0, 0

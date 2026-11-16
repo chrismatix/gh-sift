@@ -11,7 +11,7 @@ import (
 
 var (
 	htmlComment   = regexp.MustCompile(`(?s)<!--.*?-->`)
-	imageTag      = regexp.MustCompile(`(?i)<img\b[^>]*?(?:alt="([^"]*)")?[^>]*>`)
+	imageTag      = regexp.MustCompile(`(?i)<img\b(?:[^>]*?\salt="([^"]*)")?[^>]*>`)
 	emptyImage    = regexp.MustCompile(`!\[\]\([^)\s]*\)`)
 	detailsBlock  = regexp.MustCompile(`(?is)<details>.*?</details>`)
 	htmlTag       = regexp.MustCompile(`(?i)</?[a-z][a-z0-9]*\b[^>]*>`)
