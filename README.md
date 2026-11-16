@@ -2,6 +2,7 @@
 
 <p>
   <img src="https://github.com/chrismatix/gh-sift/actions/workflows/test.yml/badge.svg" alt="Test status">
+  <a href="https://chrismatix.github.io/gh-sift/coverage.html"><img src="https://chrismatix.github.io/gh-sift/coverage.svg" alt="Coverage"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/chrismatix/gh-sift.svg" alt="MIT license"></a>
 </p>
 

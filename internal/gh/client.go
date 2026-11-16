@@ -18,21 +18,27 @@ import (
 type Client struct {
 	graphql *api.GraphQLClient
 	rest    *api.RESTClient
+	options api.ClientOptions
 	// Set by SIFT_READ_ONLY=1: every write is refused, so the app can be
 	// tried against repositories that must not be touched.
 	ReadOnly bool
 }
 
 func NewClient() (*Client, error) {
-	graphql, err := api.DefaultGraphQLClient()
+	return NewClientWithOptions(api.ClientOptions{Timeout: 60 * time.Second})
+}
+
+// NewClientWithOptions lets tests route every request to a fake GitHub through options.Transport.
+func NewClientWithOptions(options api.ClientOptions) (*Client, error) {
+	graphql, err := api.NewGraphQLClient(options)
 	if err != nil {
 		return nil, err
 	}
-	rest, err := api.NewRESTClient(api.ClientOptions{Timeout: 60 * time.Second})
+	rest, err := api.NewRESTClient(options)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{graphql: graphql, rest: rest, ReadOnly: os.Getenv("SIFT_READ_ONLY") != ""}, nil
+	return &Client{graphql: graphql, rest: rest, options: options, ReadOnly: os.Getenv("SIFT_READ_ONLY") != ""}, nil
 }
 
 var ErrReadOnly = errors.New("read-only mode (SIFT_READ_ONLY is set)")
@@ -55,8 +61,10 @@ func (client *Client) mutate(query string, variables map[string]any, response an
 func (client *Client) getText(path, accept string) (string, error) {
 	rest := client.rest
 	if accept != "" {
+		options := client.options
+		options.Headers = map[string]string{"Accept": accept}
 		var err error
-		rest, err = api.NewRESTClient(api.ClientOptions{Headers: map[string]string{"Accept": accept}, Timeout: 60 * time.Second})
+		rest, err = api.NewRESTClient(options)
 		if err != nil {
 			return "", err
 		}
