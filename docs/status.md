@@ -16,6 +16,9 @@ Sift is young: it works for daily review, and the gaps are listed here.
 - The PR view, Checks, the diff, read tracking, review comments, and stack
   navigation and merging, as in the tour.
 - Light and dark terminals.
+- Generated files start folded in the diff, as on GitHub: paths marked
+  `linguist-generated` in the root `.gitattributes` at the PR head, and
+  lockfiles, minified and protobuf files otherwise. `z` unfolds one.
 
 ## What does not work yet
 
@@ -27,6 +30,7 @@ Sift is young: it works for daily review, and the gaps are listed here.
 - In the diff: expanding context beyond what GitHub's diff carries, line
   wrapping (long lines scroll sideways with the arrow keys), the mouse, and
   opening a file in `$EDITOR`.
+- `.gitattributes` files below the repository root, which GitHub also honours.
 - Commenting on the deleted side of a changed line in the split layout: switch
   to the stacked layout (`2`), where each line is its own row.
 - More than 100 review threads or check runs per PR, and stacks deeper than 30,

@@ -36,11 +36,13 @@ type pullRequestKey struct {
 // pullRequestData is everything fetched for one PR. It stays in memory so
 // moving through a stack and back does not wait on the network twice.
 type pullRequestData struct {
-	detail      *gh.PullRequest
-	detailAt    time.Time
-	loading     bool
-	err         error
-	files       []diff.File
+	detail   *gh.PullRequest
+	detailAt time.Time
+	loading  bool
+	err      error
+	files    []diff.File
+	// Paths the repository's .gitattributes declares generated (true) or not (false).
+	generated   map[string]bool
 	diffHead    string
 	diffLoading bool
 	diffErr     error
@@ -130,10 +132,11 @@ type (
 		err    error
 	}
 	diffLoadedMsg struct {
-		key   pullRequestKey
-		head  string
-		files []diff.File
-		err   error
+		key       pullRequestKey
+		head      string
+		files     []diff.File
+		generated map[string]bool
+		err       error
 	}
 	// actionMsg reports a finished write; then runs on success to refresh.
 	actionMsg struct {
@@ -246,7 +249,7 @@ func (app *App) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 		data.diffLoading = false
 		data.diffErr = message.err
 		if message.err == nil {
-			data.files, data.diffHead = message.files, message.head
+			data.files, data.generated, data.diffHead = message.files, message.generated, message.head
 		}
 		if message.key == app.pullRequest.key {
 			app.pullRequest.diff.setData(app)
@@ -399,7 +402,17 @@ func (app *App) loadDiff(key pullRequestKey) tea.Cmd {
 	}
 	return func() tea.Msg {
 		unified, err := app.client.Diff(key.repository, key.number)
-		return diffLoadedMsg{key: key, head: head, files: diff.Parse(unified), err: err}
+		files := diff.Parse(unified)
+		// Without the attributes, the built-in guesses still fold lockfiles and the like.
+		var generated map[string]bool
+		if attributes, attributesErr := app.client.Attributes(key.repository, head); attributesErr == nil && head != "" {
+			paths := make([]string, len(files))
+			for index, file := range files {
+				paths[index] = file.Path()
+			}
+			generated, _ = diff.GeneratedByAttributes(attributes, paths)
+		}
+		return diffLoadedMsg{key: key, head: head, files: files, generated: generated, err: err}
 	}
 }
 

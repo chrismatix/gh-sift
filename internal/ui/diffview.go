@@ -62,9 +62,11 @@ type diffView struct {
 	// A thread to put the cursor on once the diff has loaded.
 	pendingThread string
 
-	files   []diff.File
-	viewed  map[string]string
-	threads map[string][]*gh.Thread
+	files  []diff.File
+	viewed map[string]string
+	// From .gitattributes; overrides the built-in guess in isGenerated.
+	generated map[string]bool
+	threads   map[string][]*gh.Thread
 
 	rows      []diffRow
 	stale     bool
@@ -98,6 +100,7 @@ func (view *diffView) setData(app *App) {
 	if view.folded == nil {
 		view.folded, view.unfolded, view.anchor = map[string]bool{}, map[string]bool{}, -1
 	}
+	view.generated = data.generated
 	view.viewed, view.threads = map[string]string{}, map[string][]*gh.Thread{}
 	if detail := data.detail; detail != nil {
 		for _, file := range detail.Files {
@@ -151,7 +154,13 @@ func (view *diffView) isFolded(file diff.File) bool {
 	if folded, chosen := view.folded[file.Path()]; chosen {
 		return folded
 	}
-	return view.viewed[file.Path()] == "VIEWED" || isGenerated(file.Path())
+	if view.viewed[file.Path()] == "VIEWED" {
+		return true
+	}
+	if generated, declared := view.generated[file.Path()]; declared {
+		return generated
+	}
+	return isGenerated(file.Path())
 }
 
 func (view *diffView) hunkRead(app *App, file diff.File, hunk diff.Hunk) bool {

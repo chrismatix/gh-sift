@@ -1,9 +1,12 @@
 package gh
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/cli/go-gh/v2/pkg/api"
 )
 
 type ThreadComment struct {
@@ -517,4 +520,14 @@ query($owner: String!, $name: String!, $branch: String!) {
 		}
 	}
 	return found[0].Number, nil
+}
+
+// Attributes returns the .gitattributes at the root of ref, or "" when there is none.
+func (client *Client) Attributes(repository, ref string) (string, error) {
+	text, err := client.getText(fmt.Sprintf("repos/%s/contents/.gitattributes?ref=%s", repository, ref), "application/vnd.github.raw")
+	var httpError *api.HTTPError
+	if errors.As(err, &httpError) && httpError.StatusCode == 404 {
+		return "", nil
+	}
+	return text, err
 }
