@@ -13,6 +13,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/cli/go-gh/v2/pkg/browser"
 
 	"github.com/chrismatix/gh-sift/internal/config"
@@ -76,6 +77,7 @@ type App struct {
 	store       map[pullRequestKey]*pullRequestData
 
 	overlay  *overlay
+	network  network
 	showHelp bool
 	toast    toast
 	// Count of running background writes, shown as a spinner in the footer.
@@ -207,6 +209,9 @@ func (app *App) spinner() string {
 }
 
 func (app *App) Update(message tea.Msg) (tea.Model, tea.Cmd) {
+	if err, isLoad := loadError(message); isLoad {
+		app.network.observe(err, app.client.Health())
+	}
 	switch message := message.(type) {
 	case tea.WindowSizeMsg:
 		// The layout assumes some room; a real program starts out reporting 0×0.
@@ -230,9 +235,12 @@ func (app *App) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		app.spinnerFrame++
 		commands := []tea.Cmd{app.tick()}
-		commands = append(commands, app.list.periodic(app)...)
-		if app.screen == screenPullRequest {
-			commands = append(commands, app.pullRequest.periodic(app)...)
+		// After a failure, polling waits out its backoff instead of retrying every tick.
+		if time.Now().After(app.network.retryAt) {
+			commands = append(commands, app.list.periodic(app)...)
+			if app.screen == screenPullRequest {
+				commands = append(commands, app.pullRequest.periodic(app)...)
+			}
 		}
 		return app, tea.Batch(commands...)
 
@@ -334,6 +342,20 @@ func (app *App) View() tea.View {
 		lines = app.list.view(app, app.height-1)
 	}
 	lines = block(lines, app.width, app.height-1)
+	if chip := app.statusChip(); chip != "" {
+		room := app.width - width(chip) - 3
+		top := lines[0]
+		plain := strings.TrimRight(ansi.Strip(top), " ")
+		// The chip takes the place of what sits at the far right (the logo, the
+		// PR's title) instead of cutting into it.
+		if gap := strings.LastIndex(plain, "   "); width(plain) > room && gap >= 0 {
+			plain = strings.TrimRight(plain[:gap], " ")
+		}
+		if width(plain) <= room {
+			top = ansi.Truncate(top, width(plain), "")
+		}
+		lines[0] = spread(truncate(top, room), chip+" ", app.width)
+	}
 	if app.showHelp {
 		lines = overlayOnto(lines, app.helpBox(), app.width, false)
 	}

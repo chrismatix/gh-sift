@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/cli/go-gh/v2/pkg/api"
 
@@ -40,6 +41,8 @@ type Server struct {
 	mutex    sync.Mutex
 	routes   []route
 	Requests []Request
+	// Headers go on every response, such as GitHub's X-RateLimit-* budget.
+	Headers map[string]string
 }
 
 // GraphQL answers queries and mutations whose text contains match.
@@ -102,9 +105,12 @@ func (server *Server) RoundTrip(httpRequest *http.Request) (*http.Response, erro
 			break
 		}
 	}
+	recorder := httptest.NewRecorder()
+	for name, value := range server.Headers {
+		recorder.Header().Set(name, value)
+	}
 	server.mutex.Unlock()
 
-	recorder := httptest.NewRecorder()
 	if handler == nil {
 		recorder.WriteHeader(http.StatusNotFound)
 		recorder.WriteString(`{"message": "Not Found"}`)
@@ -140,5 +146,6 @@ func New(t testing.TB) (*Server, *gh.Client) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	client.SetRetryDelay(time.Millisecond)
 	return server, client
 }

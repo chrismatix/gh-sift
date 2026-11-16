@@ -259,7 +259,8 @@ func (list *listScreen) periodic(app *App) []tea.Cmd {
 	}
 	var commands []tea.Cmd
 	for index, current := range list.sections() {
-		if !current.loading && !current.loadedAt.IsZero() && time.Since(current.loadedAt) > interval {
+		// A failed section is retried too; the app's backoff spaces the attempts.
+		if !current.loading && (current.err != nil || !current.loadedAt.IsZero() && time.Since(current.loadedAt) > interval) {
 			commands = append(commands, list.fetch(app, list.kind, index, false))
 		}
 	}

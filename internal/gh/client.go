@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,6 +20,7 @@ type Client struct {
 	graphql *api.GraphQLClient
 	rest    *api.RESTClient
 	options api.ClientOptions
+	retry   *retryTransport
 	// Set by SIFT_READ_ONLY=1: every write is refused, so the app can be
 	// tried against repositories that must not be touched.
 	ReadOnly bool
@@ -30,6 +32,11 @@ func NewClient() (*Client, error) {
 
 // NewClientWithOptions lets tests route every request to a fake GitHub through options.Transport.
 func NewClientWithOptions(options api.ClientOptions) (*Client, error) {
+	retry := &retryTransport{next: options.Transport, baseDelay: time.Second}
+	if retry.next == nil {
+		retry.next = http.DefaultTransport
+	}
+	options.Transport = retry
 	graphql, err := api.NewGraphQLClient(options)
 	if err != nil {
 		return nil, err
@@ -38,7 +45,7 @@ func NewClientWithOptions(options api.ClientOptions) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{graphql: graphql, rest: rest, options: options, ReadOnly: os.Getenv("SIFT_READ_ONLY") != ""}, nil
+	return &Client{graphql: graphql, rest: rest, options: options, retry: retry, ReadOnly: os.Getenv("SIFT_READ_ONLY") != ""}, nil
 }
 
 var ErrReadOnly = errors.New("read-only mode (SIFT_READ_ONLY is set)")
@@ -153,4 +160,14 @@ func (commits lastCommit) checksState() string {
 		return ""
 	}
 	return commits.Nodes[0].Commit.StatusCheckRollup.State
+}
+
+// Health reports the rate-limit budget and whether requests are on hold.
+func (client *Client) Health() Health {
+	return client.retry.Health()
+}
+
+// SetRetryDelay sets the first backoff step, so tests need not wait seconds.
+func (client *Client) SetRetryDelay(delay time.Duration) {
+	client.retry.baseDelay = delay
 }
