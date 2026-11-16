@@ -74,6 +74,12 @@ func (view *diffView) view(app *App, height int) []string {
 	view.top = clamp(view.top, 0, lastTop)
 
 	paneWidth := view.paneWidth(app)
+	// Files run into each other, so the cursor's file gets an inverted header and a light frame.
+	currentFile := -1
+	if view.cursor >= 0 && view.cursor < len(view.rows) {
+		currentFile = view.rows[view.cursor].file
+	}
+	frameTone := theme.SecondaryBorder
 	pane := make([]string, height)
 	for line := range pane {
 		index := view.top + line
@@ -81,12 +87,22 @@ func (view *diffView) view(app *App, height int) []string {
 			pane[line] = strings.Repeat(" ", paneWidth)
 			continue
 		}
+		row := view.rows[index]
 		// The file header stays pinned while its file scrolls under it.
-		if line == 0 && view.rows[index].kind != rowFile && view.rows[index].kind != rowBlank {
-			pane[line] = view.fileHeader(app, view.rows[index].file, paneWidth, false)
+		if line == 0 && row.kind != rowFile && row.kind != rowBlank {
+			pane[line] = view.fileHeader(app, row.file, paneWidth, false, row.file == currentFile)
 			continue
 		}
-		pane[line] = view.renderRow(app, index, paneWidth)
+		switch {
+		case row.kind == rowFile:
+			pane[line] = view.fileHeader(app, row.file, paneWidth, index == view.cursor, row.file == currentFile)
+		case row.kind == rowBlank && row.file == currentFile+1 && currentFile >= 0:
+			pane[line] = paint("╰"+strings.Repeat("─", max(paneWidth-2, 0))+"╯", frameTone, nil, false)
+		case row.kind != rowBlank && row.file == currentFile:
+			pane[line] = paint("│", frameTone, nil, false) + view.renderRow(app, index, paneWidth-2) + paint("│", frameTone, nil, false)
+		default:
+			pane[line] = " " + view.renderRow(app, index, paneWidth-2) + " "
+		}
 	}
 	sidebarWidth := view.sidebarWidth(app)
 	if sidebarWidth == 0 {
@@ -121,8 +137,6 @@ func (view *diffView) renderRow(app *App, index, limit int) string {
 	switch row.kind {
 	case rowBlank:
 		return strings.Repeat(" ", limit)
-	case rowFile:
-		return view.fileHeader(app, row.file, limit, onCursor)
 	case rowHunk, rowFold:
 		file := view.files[row.file]
 		if row.hunk < 0 {
@@ -145,7 +159,7 @@ func (view *diffView) renderRow(app *App, index, limit int) string {
 	return view.codeRow(app, row, index, limit, rail)
 }
 
-func (view *diffView) fileHeader(app *App, fileIndex, limit int, onCursor bool) string {
+func (view *diffView) fileHeader(app *App, fileIndex, limit int, onCursor, current bool) string {
 	theme := app.theme
 	file := view.files[fileIndex]
 	status := map[diff.Status]color.Color{diff.AddedFile: theme.AddedSign, diff.DeletedFile: theme.RemovedSign, diff.Renamed: theme.Note, diff.Modified: theme.Note}[file.Status]
@@ -172,6 +186,15 @@ func (view *diffView) fileHeader(app *App, fileIndex, limit int, onCursor bool) 
 	marker := " "
 	if onCursor {
 		marker = paint("▌", theme.Focus, nil, false)
+	}
+	if current {
+		// Inverted: one solid bar, so the colours of the parts give way to it.
+		bar := ansi.Strip(left)
+		marker = paint(" ", nil, theme.PrimaryText, false)
+		if onCursor {
+			marker = paint("▌", theme.Focus, theme.PrimaryText, false)
+		}
+		return marker + paint(spread(truncate(bar, limit-width(right)-3), ansi.Strip(right), limit-1), theme.InvertedText, theme.PrimaryText, true)
 	}
 	return paintBackground(marker+spread(truncate(left, limit-width(right)-3), right, limit-1), theme.Panel)
 }
