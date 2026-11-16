@@ -69,7 +69,7 @@ func TestRateLimitHoldsPollingUntilReset(t *testing.T) {
 		"X-RateLimit-Resource": "graphql", "X-RateLimit-Remaining": "0", "X-RateLimit-Limit": "5000",
 		"X-RateLimit-Reset": strconv.FormatInt(reset.Unix(), 10),
 	}
-	app.github.GraphQL("reviewThreads(first: 100)", ghtest.Reply(200, `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`))
+	app.github.GraphQL("reviewThreads(first: 100)", ghtest.Reply(200, `{"errors":[{"type":"RATE_LIMIT","code":"graphql_rate_limit","message":"API rate limit already exceeded for user ID 1."}]}`))
 	app.press("R")
 
 	resumes := "rate limited · resumes " + reset.Local().Format("15:04")

@@ -96,7 +96,7 @@ func TestRetryBacksOffUntilGitHubAnswers(t *testing.T) {
 
 func TestExhaustedLimitHoldsRequestsUntilReset(t *testing.T) {
 	reset := time.Now().Add(20 * time.Minute)
-	limited := reply(200, `{"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`,
+	limited := reply(200, `{"errors":[{"type":"RATE_LIMIT","code":"graphql_rate_limit","message":"API rate limit already exceeded for user ID 1."}]}`,
 		"X-RateLimit-Resource", "graphql", "X-RateLimit-Remaining", "0", "X-RateLimit-Limit", "5000",
 		"X-RateLimit-Reset", strconv.FormatInt(reset.Unix(), 10))
 	script := &scriptedTransport{replies: []func() (*http.Response, error){limited}}
@@ -106,7 +106,7 @@ func TestExhaustedLimitHoldsRequestsUntilReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body, _ := io.ReadAll(response.Body); !strings.Contains(string(body), "RATE_LIMITED") {
+	if body, _ := io.ReadAll(response.Body); !strings.Contains(string(body), "graphql_rate_limit") {
 		t.Errorf("the caller should still see GitHub's error: %q", body)
 	}
 	health := transport.Health()

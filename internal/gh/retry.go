@@ -139,7 +139,8 @@ func (transport *retryTransport) observe(response *http.Response) (limited bool,
 		body, _ := io.ReadAll(response.Body)
 		response.Body.Close()
 		response.Body = io.NopCloser(bytes.NewReader(body))
-		if !strings.Contains(string(body), `"RATE_LIMITED"`) {
+		// GitHub has sent both RATE_LIMIT and RATE_LIMITED as the error type.
+		if !strings.Contains(string(body), `"RATE_LIMIT`) {
 			return false, time.Time{}
 		}
 	} else if response.StatusCode != http.StatusForbidden && response.StatusCode != http.StatusTooManyRequests {
