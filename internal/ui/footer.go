@@ -20,6 +20,12 @@ func (app *App) footer() string {
 		left = " " + theme.warning().Bold(true).Render(app.overlay.title) + " "
 	case app.screen == screenPullRequest && app.pullRequest.tab == tabChecks:
 		left = " " + app.pullRequest.checks.summary(theme) + theme.faint().Render("  ·  "+app.pullRequest.hints(app))
+	case app.screen == screenPullRequest && app.pullRequest.tab == tabFiles && (app.pullRequest.diff.typing || app.pullRequest.diff.query != ""):
+		search := app.pullRequest.diff.query
+		if app.pullRequest.diff.typing {
+			search += "▏"
+		}
+		left = " " + theme.text(theme.Focus).Render("search ") + search + theme.faint().Render("  ·  "+app.pullRequest.hints(app))
 	case app.screen == screenPullRequest:
 		left = " " + theme.faint().Render(app.pullRequest.hints(app))
 	default:

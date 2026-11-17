@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/chrismatix/gh-sift/internal/diff"
 	"github.com/chrismatix/gh-sift/internal/gh/ghtest"
 	"github.com/chrismatix/gh-sift/internal/readstate"
 )
@@ -745,5 +746,50 @@ func TestDiffViewHugeFileIsNotColoured(t *testing.T) {
 	styling := app.pullRequest.diff.styling[0]
 	if styling == nil || len(styling.tokens) != 0 {
 		t.Error("a file this large should be drawn without syntax colours")
+	}
+}
+
+func TestDiffSearchFindsTextInEveryFileAndUnfoldsIt(t *testing.T) {
+	app := diffViewOpen(t, diffViewDefaultFixture())
+	app.press("2", "g")
+	// Typed keys belong to the query, not to their usual commands.
+	app.press("ctrl+f", "v", "e", "r", "s", "i", "o", "n", "a", "backspace", "enter")
+	view := &app.pullRequest.diff
+	if view.query != "version" || app.overlay != nil {
+		t.Fatalf("query = %q, overlay %v", view.query, app.overlay)
+	}
+	if row := diffViewCurrent(app); row.left == nil || row.left.Text != "export const version = 1" {
+		t.Fatalf("enter should land on the first match, got %+v", row)
+	}
+	app.press("n")
+	if row := diffViewCurrent(app); row.right == nil || row.right.Text != "export const version = 2" {
+		t.Errorf("n should move to the next match, got %+v", row)
+	}
+	app.press("n")
+	app.expectScreen("no further match for version")
+	app.press("N")
+	if row := diffViewCurrent(app); row.left == nil || row.left.Text != "export const version = 1" {
+		t.Errorf("N should move back, got %+v", row)
+	}
+
+	// go.sum is folded as generated; a match inside opens it.
+	app.press("esc", "g", "ctrl+f", "space", "v", "2", "enter")
+	if row := diffViewCurrent(app); row.right == nil || row.right.Text != "example.com/a v2" {
+		t.Fatalf("the match in the folded file should be revealed, got %+v", row)
+	}
+	app.expectScreen("search  v2")
+	app.press("esc")
+	if view.query != "" {
+		t.Error("esc should clear the search")
+	}
+}
+
+func TestDiffSearchHighlightsTheMatch(t *testing.T) {
+	view := &diffView{query: "Ver"}
+	if spans := view.matchSpans("version, VERSION"); len(spans) != 2 || spans[1] != (diff.Span{Start: 9, End: 12}) {
+		t.Errorf("spans = %v", spans)
+	}
+	if spans := view.matchSpans("İ version"); spans != nil {
+		t.Errorf("text whose lowercase changes length is left unmarked: %v", spans)
 	}
 }

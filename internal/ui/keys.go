@@ -203,6 +203,8 @@ var diffHelp = []helpEntry{
 	{"0/1/2", "layout: auto, split, stack"},
 	{"s", "show or hide the files pane"},
 	{"/", "jump to a file"},
+	{"ctrl+f", "search the text of the diff"},
+	{"n/N", "next / previous match"},
 	{"x", "check off: hunk read, thread resolved"},
 	{"v", "mark the file viewed on GitHub"},
 	{"H", "show read hunks dimmed or folded"},

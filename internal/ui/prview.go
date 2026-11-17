@@ -121,6 +121,11 @@ func (screen *pullRequestScreen) handleKey(app *App, pressed string) tea.Cmd {
 		}
 	}
 
+	// While a diff search is typed, every key is part of the query.
+	if screen.tab == tabFiles && screen.diff.typing {
+		return screen.diff.handleKey(app, pressed)
+	}
+
 	// Keys that mean the same on every tab.
 	switch pressed {
 	case "?":

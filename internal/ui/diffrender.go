@@ -321,10 +321,11 @@ func (view *diffView) codeCell(theme Theme, styling *fileStyling, line *diff.Lin
 		tokens = []diff.Token{{Text: line.Text}}
 	}
 	spans := styling.spans[line]
+	matches := view.matchSpans(line.Text)
 
 	var builder strings.Builder
 	column, written, offset := 0, 0, 0
-	emit := func(text string, foreground color.Color, emphasised, bold bool) {
+	emit := func(text string, foreground color.Color, emphasised, matched, bold bool) {
 		if strings.Contains(text, "\t") {
 			var expanded strings.Builder
 			position := column
@@ -356,6 +357,9 @@ func (view *diffView) codeCell(theme Theme, styling *fileStyling, line *diff.Lin
 		if dim {
 			foreground, bold = theme.FaintText, false
 		}
+		if matched {
+			behind, bold = theme.SearchMatch, true
+		}
 		builder.WriteString(paint(text, foreground, behind, bold))
 		written += to - from
 	}
@@ -373,8 +377,19 @@ func (view *diffView) codeCell(theme Theme, styling *fileStyling, line *diff.Lin
 					break
 				}
 			}
+			matched := false
+			for _, match := range matches {
+				if offset < match.Start {
+					boundary = min(boundary, match.Start)
+					break
+				}
+				if offset < match.End {
+					matched, boundary = true, min(boundary, match.End)
+					break
+				}
+			}
 			take := min(len(text), boundary-offset)
-			emit(text[:take], tokenColor(token.Color), emphasised, token.Bold)
+			emit(text[:take], tokenColor(token.Color), emphasised, matched, token.Bold)
 			text, offset = text[take:], offset+take
 		}
 	}

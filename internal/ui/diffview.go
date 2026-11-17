@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -83,6 +84,10 @@ type diffView struct {
 	// Read hunks and resolved threads the user opened anyway.
 	unfolded map[string]bool
 	styling  map[int]*fileStyling
+
+	// Full-text search: typing while the query is being entered, then n/N.
+	query  string
+	typing bool
 }
 
 // invalidate asks for the rows to be rebuilt. The old rows stay until then,
@@ -451,8 +456,119 @@ func (view *diffView) jump(app *App, direction int, what string, test func(index
 	app.notify(map[int]string{1: "no further ", -1: "no earlier "}[direction]+what, false)
 }
 
+// matchSpans finds the query in a line, ignoring case.
+func (view *diffView) matchSpans(text string) []diff.Span {
+	if view.query == "" {
+		return nil
+	}
+	lower, query := strings.ToLower(text), strings.ToLower(view.query)
+	// Lowercasing can change byte lengths outside ASCII, which would misplace the spans.
+	if len(lower) != len(text) {
+		return nil
+	}
+	var spans []diff.Span
+	for start := 0; ; {
+		found := strings.Index(lower[start:], query)
+		if found < 0 {
+			return spans
+		}
+		spans = append(spans, diff.Span{Start: start + found, End: start + found + len(query)})
+		start += found + len(query)
+	}
+}
+
+// findMatch moves to the next line containing the query, searching every
+// file, and unfolds the file or read hunk the match sits in.
+func (view *diffView) findMatch(app *App, direction int) {
+	type place struct {
+		file, hunk int
+		line       *diff.Line
+	}
+	var places []place
+	order := map[*diff.Line]int{}
+	for fileIndex, file := range view.files {
+		for hunkIndex := range file.Hunks {
+			for lineIndex := range file.Hunks[hunkIndex].Lines {
+				line := &file.Hunks[hunkIndex].Lines[lineIndex]
+				order[line] = len(places)
+				places = append(places, place{fileIndex, hunkIndex, line})
+			}
+		}
+	}
+	// Positions are doubled so a row between two lines can sit between their positions.
+	low, high := 2*len(places), 2*len(places)
+	for index := view.cursor; index < len(view.rows); index++ {
+		row := view.rows[index]
+		if row.kind != rowCode {
+			continue
+		}
+		low, high = 1<<30, -1
+		for _, line := range []*diff.Line{row.left, row.right} {
+			if line != nil {
+				low, high = min(low, 2*order[line]), max(high, 2*order[line])
+			}
+		}
+		if index > view.cursor {
+			low, high = low-1, low-1
+		}
+		break
+	}
+	target := -1
+	for index := range places {
+		if len(view.matchSpans(places[index].line.Text)) == 0 {
+			continue
+		}
+		if direction > 0 && 2*index > high {
+			target = index
+			break
+		}
+		if direction < 0 && 2*index < low {
+			target = index
+		}
+	}
+	if target < 0 {
+		app.notify(map[int]string{1: "no further ", -1: "no earlier "}[direction]+"match for "+view.query, false)
+		return
+	}
+	found := places[target]
+	file := view.files[found.file]
+	if view.isFolded(file) {
+		view.folded[file.Path()] = false
+	}
+	view.unfolded[file.Path()+file.Hunks[found.hunk].Hash()] = true
+	view.invalidate()
+	view.ensureRows(app)
+	for index, row := range view.rows {
+		if row.left == found.line || row.right == found.line {
+			view.reveal(app, index)
+			return
+		}
+	}
+}
+
 func (view *diffView) handleKey(app *App, pressed string) tea.Cmd {
 	view.ensureRows(app)
+	if view.typing {
+		switch {
+		case pressed == "esc":
+			view.typing, view.query = false, ""
+		case pressed == "enter":
+			view.typing = false
+			if view.query != "" {
+				view.findMatch(app, 1)
+			}
+		case pressed == "backspace":
+			if view.query != "" {
+				_, size := utf8.DecodeLastRuneInString(view.query)
+				view.query = view.query[:len(view.query)-size]
+			}
+		case pressed == "space":
+			view.query += " "
+		case utf8.RuneCountInString(pressed) == 1:
+			view.query += pressed
+		}
+		return nil
+	}
 	row := view.currentRow()
 	half := max(view.bodyHeight(app)/2, 1)
 
@@ -460,6 +576,10 @@ func (view *diffView) handleKey(app *App, pressed string) tea.Cmd {
 	case "esc":
 		if view.anchor >= 0 {
 			view.anchor = -1
+			return nil
+		}
+		if view.query != "" {
+			view.query = ""
 			return nil
 		}
 		fallthrough
@@ -523,6 +643,14 @@ func (view *diffView) handleKey(app *App, pressed string) tea.Cmd {
 		})
 	case "/":
 		return view.pickFile(app)
+	case "ctrl+f":
+		view.typing, view.query = true, ""
+	case "n", "N":
+		if view.query == "" {
+			app.notify("ctrl+f searches the diff", false)
+			return nil
+		}
+		view.findMatch(app, map[string]int{"n": 1, "N": -1}[pressed])
 	}
 	if row == nil {
 		return nil
@@ -739,6 +867,12 @@ func (view *diffView) startComment(app *App, suggestion bool) tea.Cmd {
 }
 
 func (view *diffView) hints(app *App) string {
+	switch {
+	case view.typing:
+		return "enter find · esc cancel"
+	case view.query != "":
+		return "n/N next match · esc clears the search · j/k line · c comment"
+	}
 	if view.anchor >= 0 {
 		return "selecting lines · j/k extend · c comment · S suggest · esc cancel"
 	}
