@@ -170,6 +170,17 @@ func (current *section) count() int {
 	return len(current.pullRequests) + len(current.issues)
 }
 
+// key names a row across refreshes; empty past the end.
+func (current *section) key(index int) string {
+	switch {
+	case index < len(current.pullRequests):
+		return fmt.Sprintf("%s#%d", current.pullRequests[index].Repository, current.pullRequests[index].Number)
+	case index < len(current.issues):
+		return fmt.Sprintf("%s#%d", current.issues[index].Repository, current.issues[index].Number)
+	}
+	return ""
+}
+
 func (current *section) selectedPullRequest() *gh.PullRequestRow {
 	if current.cursor < len(current.pullRequests) {
 		return &current.pullRequests[current.cursor]
@@ -231,22 +242,49 @@ func (list *listScreen) fetch(app *App, view config.ViewType, index int, more bo
 		current.generation++
 	}
 	current.loading, current.loadingMore = true, more
-	generation, after := current.generation, ""
+	// A refresh asks for every row already loaded, so the pages scrolled into stay.
+	generation, after, wanted := current.generation, "", max(current.limit, current.count())
 	if more {
-		after = current.endCursor
+		after, wanted = current.endCursor, current.limit
 	}
-	query, limit, client, queue := list.query(app, current), current.limit, app.client, current.mergeQueue
+	query, client, queue := list.query(app, current), app.client, current.mergeQueue
 	return func() tea.Msg {
 		message := sectionLoadedMsg{view: view, index: index, generation: generation, appended: more}
 		switch {
 		case view == config.IssuesView:
-			message.issues, message.err = client.SearchIssues(query, limit, after)
+			message.issues, message.err = fetchPages(wanted, after, func(limit int, after string) (gh.Page[gh.IssueRow], error) {
+				return client.SearchIssues(query, limit, after)
+			})
 		case queue != nil:
-			message.pullRequests, message.err = client.MergeQueue(queue.Repo, queue.Branch, limit, after)
+			message.pullRequests, message.err = fetchPages(wanted, after, func(limit int, after string) (gh.Page[gh.PullRequestRow], error) {
+				return client.MergeQueue(queue.Repo, queue.Branch, limit, after)
+			})
 		default:
-			message.pullRequests, message.err = client.SearchPullRequests(query, limit, after)
+			message.pullRequests, message.err = fetchPages(wanted, after, func(limit int, after string) (gh.Page[gh.PullRequestRow], error) {
+				return client.SearchPullRequests(query, limit, after)
+			})
 		}
 		return message
+	}
+}
+
+// fetchPages reads pages until it has the wanted number of rows or there are
+// no more. GitHub serves at most 100 rows a page.
+func fetchPages[Row any](wanted int, after string, fetch func(limit int, after string) (gh.Page[Row], error)) (gh.Page[Row], error) {
+	var result gh.Page[Row]
+	for {
+		limit := min(wanted-len(result.Rows), 100)
+		page, err := fetch(limit, after)
+		if err != nil {
+			return result, err
+		}
+		result.Rows = append(result.Rows, page.Rows...)
+		result.TotalCount, result.HasNextPage, result.EndCursor = page.TotalCount, page.HasNextPage, page.EndCursor
+		// A short page means GitHub gave what it had, as search does when it times out.
+		if !page.HasNextPage || len(page.Rows) < limit || len(result.Rows) >= wanted {
+			return result, nil
+		}
+		after = page.EndCursor
 	}
 }
 
@@ -298,6 +336,8 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 		return nil
 	}
 	current.loadedAt = time.Now()
+	// The cursor stays on the row it was on, wherever a refresh moved it.
+	selected := current.key(current.cursor)
 	if message.view == config.IssuesView {
 		page := message.issues
 		if !message.appended {
@@ -313,6 +353,11 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 		}
 		current.pullRequests = append(current.pullRequests, page.Rows...)
 		current.totalCount, current.hasNextPage, current.endCursor = page.TotalCount, page.HasNextPage, page.EndCursor
+	}
+	for index := range current.count() {
+		if !message.appended && selected != "" && current.key(index) == selected {
+			current.cursor = index
+		}
 	}
 	current.cursor = clamp(current.cursor, 0, max(current.count()-1, 0))
 	if !message.appended {

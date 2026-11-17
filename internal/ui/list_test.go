@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -939,5 +941,59 @@ func TestListShowsAMergeQueueSection(t *testing.T) {
 	app.press("/")
 	if app.list.searching {
 		t.Error("a merge queue has no filters to edit")
+	}
+}
+
+// listServePaged pages through nodes the way GitHub does, honouring limit and cursor.
+func listServePaged(app *testApp, nodes func() []any) {
+	app.github.GraphQL("search(", func(request ghtest.Request) (int, any) {
+		all := nodes()
+		start := 0
+		if after, isSet := request.Variables["after"].(string); isSet {
+			start, _ = strconv.Atoi(after)
+		}
+		end := min(start+int(request.Variables["limit"].(float64)), len(all))
+		return 200, listSearchPage(all[start:end], end < len(all), strconv.Itoa(end))
+	})
+}
+
+func TestListRefreshKeepsLoadedPagesAndTheSelectedRow(t *testing.T) {
+	limit := 2
+	options := Options{Config: listTestConfig()}
+	options.Config.PRSections = []config.PrsSectionConfig{{Title: "Mine", Filters: "author:@me", Limit: &limit}}
+	app := newTestApp(t, options)
+	order := listPullRequestNodes()
+	listServePaged(app, func() []any { return order })
+	app.press("R", "j")
+	if count := app.list.current().count(); count != 3 {
+		t.Fatalf("scrolling to the bottom should load page two, have %d rows", count)
+	}
+	app.press("j")
+	if row := app.list.current().selectedPullRequest(); row.Number != 7 {
+		t.Fatalf("selected #%d", row.Number)
+	}
+
+	// GitHub now sorts #7 first; a refresh keeps all three rows and follows #7.
+	order = []any{order[2], order[0], order[1]}
+	app.press("r")
+	current := app.list.current()
+	if current.count() != 3 || current.cursor != 0 || current.selectedPullRequest().Number != 7 {
+		t.Errorf("after refresh: %d rows, cursor %d", current.count(), current.cursor)
+	}
+	searches := app.github.Find("search(")
+	if limit := searches[len(searches)-1].Variables["limit"]; limit != float64(3) {
+		t.Errorf("the refresh should ask for every loaded row, asked for %v", limit)
+	}
+}
+
+func TestFetchPagesReadsPastGitHubsPageSize(t *testing.T) {
+	var limits []int
+	fetch := func(limit int, after string) (gh.Page[int], error) {
+		limits = append(limits, limit)
+		return gh.Page[int]{Rows: make([]int, limit), HasNextPage: true, EndCursor: "next"}, nil
+	}
+	page, err := fetchPages(230, "", fetch)
+	if err != nil || len(page.Rows) != 230 || !slices.Equal(limits, []int{100, 100, 30}) {
+		t.Errorf("rows %d, limits %v, err %v", len(page.Rows), limits, err)
 	}
 }
