@@ -76,10 +76,12 @@ type App struct {
 	pullRequest pullRequestScreen
 	store       map[pullRequestKey]*pullRequestData
 
-	overlay  *overlay
-	network  network
-	showHelp bool
-	toast    toast
+	overlay *overlay
+	network network
+	// Set while the terminal reports it is not focused; polling waits for focus.
+	unfocused bool
+	showHelp  bool
+	toast     toast
 	// Count of running background writes, shown as a spinner in the footer.
 	busy         int
 	busyText     string
@@ -190,6 +192,19 @@ func (app *App) tick() tea.Cmd {
 	return tea.Tick(interval, func(now time.Time) tea.Msg { return tickMsg(now) })
 }
 
+// poll refetches what has gone stale, unless the pane is in the background or
+// a failure's backoff has not run out.
+func (app *App) poll() []tea.Cmd {
+	if app.unfocused || time.Now().Before(app.network.retryAt) {
+		return nil
+	}
+	commands := app.list.periodic(app)
+	if app.screen == screenPullRequest {
+		commands = append(commands, app.pullRequest.periodic(app)...)
+	}
+	return commands
+}
+
 func (app *App) anythingLoading() bool {
 	for _, section := range app.list.sections() {
 		if section.loading {
@@ -235,14 +250,16 @@ func (app *App) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		app.spinnerFrame++
 		commands := []tea.Cmd{app.tick()}
-		// After a failure, polling waits out its backoff instead of retrying every tick.
-		if time.Now().After(app.network.retryAt) {
-			commands = append(commands, app.list.periodic(app)...)
-			if app.screen == screenPullRequest {
-				commands = append(commands, app.pullRequest.periodic(app)...)
-			}
-		}
-		return app, tea.Batch(commands...)
+		return app, tea.Batch(append(commands, app.poll()...)...)
+
+	case tea.BlurMsg:
+		app.unfocused = true
+		return app, nil
+
+	case tea.FocusMsg:
+		// Catch up at once on whatever went stale while the pane was in the background.
+		app.unfocused = false
+		return app, tea.Batch(app.poll()...)
 
 	case sectionLoadedMsg:
 		return app, app.list.loaded(app, message)
@@ -368,6 +385,7 @@ func (app *App) View() tea.View {
 
 	view := tea.NewView(strings.Join(lines, "\n"))
 	view.AltScreen = true
+	view.ReportFocus = true
 	view.WindowTitle = "gh sift"
 	return view
 }

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/chrismatix/gh-sift/internal/gh"
 	"github.com/chrismatix/gh-sift/internal/gh/ghtest"
 )
@@ -123,3 +125,18 @@ func TestListRetriesAFailedSectionAfterTheBackoff(t *testing.T) {
 type errTest string
 
 func (err errTest) Error() string { return string(err) }
+
+func TestAnUnfocusedPaneStopsPollingUntilFocused(t *testing.T) {
+	app := diffViewOpen(t, diffViewDefaultFixture())
+	app.send(tea.BlurMsg{})
+	app.data(app.pullRequest.key).detailAt = time.Now().Add(-time.Minute)
+	sent := len(app.github.Requests)
+	app.send(tickMsg(time.Now()))
+	if len(app.github.Requests) != sent {
+		t.Error("a pane in the background should not poll")
+	}
+	app.send(tea.FocusMsg{})
+	if len(app.github.Find("reviewThreads(first: 100)")) == 0 || len(app.github.Requests) == sent {
+		t.Error("focus should refetch the stale PR at once")
+	}
+}
