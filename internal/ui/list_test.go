@@ -232,6 +232,47 @@ func TestListLoadsTheNextPageAtTheBottom(t *testing.T) {
 	app.expectScreen("Fix the flaky clock test")
 }
 
+func TestListShowsALoadingLineWhileTheNextPageLoads(t *testing.T) {
+	app := newTestApp(t, Options{})
+	nodes := listPullRequestNodes()
+	app.github.GraphQL("search(", ghtest.Reply(200, listSearchPage(nodes[:2], true, "CURSOR_2")))
+	app.press("r")
+	// The fetch command is left unrun, so the page is still on its way.
+	if app.list.move(app.App, 1) == nil || !app.list.current().loadingMore {
+		t.Fatal("moving onto the last row should start loading the next page")
+	}
+	app.expectScreen("Loading more…")
+	app.send(sectionLoadedMsg{view: config.PRsView, index: 0, generation: app.list.current().generation, appended: true})
+	if strings.Contains(app.screen(), "Loading more…") {
+		t.Error("the loading line should go once the page arrives")
+	}
+}
+
+func TestListFlashesTheIconsAReloadChanged(t *testing.T) {
+	app := listApp(t, Options{})
+	if len(app.list.flashes) != 0 {
+		t.Fatalf("a first load has nothing to compare: %v", app.list.flashes)
+	}
+	nodes := listPullRequestNodes()
+	nodes[0].(map[string]any)["reviewDecision"] = "APPROVED"
+	listServe(app, nodes, listIssueNodes())
+	app.press("r")
+
+	changed := flashKey{pullRequestKey{"octo/widgets", 101}, "review"}
+	if len(app.list.flashes) != 1 || app.list.flashes[changed].IsZero() {
+		t.Fatalf("only the new review icon should flash: %v", app.list.flashes)
+	}
+	row := app.list.current().pullRequests[0]
+	glyph := app.theme.reviewGlyph(row.ReviewDecision, row.ReviewCount)
+	if app.list.flash(app.App, row, "review", glyph) == glyph {
+		t.Error("the changed icon should be lit")
+	}
+	app.list.flashes[changed] = time.Now().Add(-flashDuration - time.Second)
+	if app.list.flash(app.App, row, "review", glyph) != glyph {
+		t.Error("the flash should end")
+	}
+}
+
 func TestListDropsASupersededResponse(t *testing.T) {
 	app := listApp(t, Options{})
 	stale := sectionLoadedMsg{view: config.PRsView, index: 0, generation: app.list.prSections[0].generation - 1}

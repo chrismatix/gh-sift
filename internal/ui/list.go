@@ -28,6 +28,7 @@ type section struct {
 	hasNextPage  bool
 	endCursor    string
 	loading      bool
+	loadingMore  bool
 	loadedAt     time.Time
 	err          error
 	cursor       int
@@ -53,6 +54,13 @@ type listScreen struct {
 	issuesFetched  bool
 	// Last results by view and query, mirrored to disk.
 	cache map[string]cachedSection
+	// When a reload changed a row's icon, so the new icon can flash briefly.
+	flashes map[flashKey]time.Time
+}
+
+type flashKey struct {
+	pullRequest pullRequestKey
+	column      string
 }
 
 type sectionLoadedMsg struct {
@@ -217,7 +225,7 @@ func (list *listScreen) fetch(app *App, view config.ViewType, index int, more bo
 	if !more {
 		current.generation++
 	}
-	current.loading = true
+	current.loading, current.loadingMore = true, more
 	generation, after := current.generation, ""
 	if more {
 		after = current.endCursor
@@ -276,7 +284,7 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 	if message.generation != current.generation {
 		return nil
 	}
-	current.loading = false
+	current.loading, current.loadingMore = false, false
 	current.err = message.err
 	if message.err != nil {
 		return nil
@@ -292,6 +300,7 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 	} else {
 		page := message.pullRequests
 		if !message.appended {
+			list.flashChanges(app, current.pullRequests, page.Rows)
 			current.pullRequests = nil
 		}
 		current.pullRequests = append(current.pullRequests, page.Rows...)
@@ -340,6 +349,38 @@ func (list *listScreen) updateRow(detail *gh.PullRequest) {
 				if detail.Stack == nil {
 					row.Stack = stack
 				}
+			}
+		}
+	}
+}
+
+// flashChanges marks the icons a reload changed. Comparing rendered glyphs
+// skips changes the icon does not show, such as a second review comment.
+func (list *listScreen) flashChanges(app *App, before, after []gh.PullRequestRow) {
+	theme := app.theme
+	glyphs := func(row gh.PullRequestRow) map[string]string {
+		return map[string]string{
+			"state":  theme.stateGlyph(row.State, row.IsDraft, row.IsInMergeQueue),
+			"review": theme.reviewGlyph(row.ReviewDecision, row.ReviewCount),
+			"ci":     theme.checksGlyph(row.ChecksState),
+		}
+	}
+	previous := map[pullRequestKey]map[string]string{}
+	for _, row := range before {
+		previous[pullRequestKey{row.Repository, row.Number}] = glyphs(row)
+	}
+	for _, row := range after {
+		key := pullRequestKey{row.Repository, row.Number}
+		old, seen := previous[key]
+		if !seen {
+			continue
+		}
+		for column, glyph := range glyphs(row) {
+			if old[column] != glyph {
+				if list.flashes == nil {
+					list.flashes = map[flashKey]time.Time{}
+				}
+				list.flashes[flashKey{key, column}] = time.Now()
 			}
 		}
 	}

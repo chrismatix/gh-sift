@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -165,6 +166,9 @@ func (list *listScreen) table(app *App, limit, height int) []string {
 		rowHeight++
 	}
 	bodyHeight := height - len(lines)
+	if current.loadingMore {
+		bodyHeight--
+	}
 	visible := max(bodyHeight/rowHeight, 1)
 	current.top = clamp(current.top, max(current.cursor-visible+1, 0), current.cursor)
 
@@ -213,10 +217,23 @@ func (list *listScreen) table(app *App, limit, height int) []string {
 			lines = append(lines, theme.text(theme.FaintBorder).Render(strings.Repeat("─", inner)))
 		}
 	}
+	if current.loadingMore {
+		lines = append(lines, "  "+theme.faint().Render(app.spinner()+" Loading more…"))
+	}
 	for index := range lines {
 		lines[index] = " " + lines[index]
 	}
 	return lines
+}
+
+const flashDuration = 2 * time.Second
+
+// flash lights up an icon a reload just changed.
+func (list *listScreen) flash(app *App, row gh.PullRequestRow, column, glyph string) string {
+	if time.Since(list.flashes[flashKey{pullRequestKey{row.Repository, row.Number}, column}]) > flashDuration {
+		return glyph
+	}
+	return paintBackground(glyph, app.theme.FlashBackground)
 }
 
 func (list *listScreen) pullRequestColumns(app *App, current *section) []column {
@@ -231,7 +248,7 @@ func (list *listScreen) pullRequestColumns(app *App, current *section) []column 
 	var columns []column
 	if !hidden(layout.State) {
 		columns = append(columns, column{"", 3, single(func(row gh.PullRequestRow) string {
-			return theme.stateGlyph(row.State, row.IsDraft, row.IsInMergeQueue)
+			return list.flash(app, row, "state", theme.stateGlyph(row.State, row.IsDraft, row.IsInMergeQueue))
 		})})
 	}
 	if compact && !hidden(layout.Repo) {
@@ -279,12 +296,12 @@ func (list *listScreen) pullRequestColumns(app *App, current *section) []column 
 	}
 	if !hidden(layout.ReviewStatus) {
 		columns = append(columns, column{glyphReview, columnWidth(layout.ReviewStatus, 4), single(func(row gh.PullRequestRow) string {
-			return theme.reviewGlyph(row.ReviewDecision, row.ReviewCount)
+			return list.flash(app, row, "review", theme.reviewGlyph(row.ReviewDecision, row.ReviewCount))
 		})})
 	}
 	if !hidden(layout.Ci) {
 		columns = append(columns, column{glyphCI, columnWidth(layout.Ci, 4), single(func(row gh.PullRequestRow) string {
-			return theme.checksGlyph(row.ChecksState)
+			return list.flash(app, row, "ci", theme.checksGlyph(row.ChecksState))
 		})})
 	}
 	if !hidden(layout.Lines) {

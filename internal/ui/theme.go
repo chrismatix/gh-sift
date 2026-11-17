@@ -26,6 +26,7 @@ type Theme struct {
 	FaintBorder     color.Color
 
 	SelectedBackground color.Color
+	FlashBackground    color.Color
 
 	Open   color.Color
 	Closed color.Color
@@ -67,6 +68,7 @@ func NewTheme(dark bool, colors *config.ColorTheme) Theme {
 		SecondaryBorder:    pick("8", "7"),
 		FaintBorder:        pick("254", "236"),
 		SelectedBackground: pick("254", "236"),
+		FlashBackground:    pick("#FFF1B8", "#5C5426"),
 		Open:               lipgloss.Color("#42A0FA"),
 		Closed:             pick("#C38080", "#C38080"),
 		Merged:             lipgloss.Color("#A371F7"),
