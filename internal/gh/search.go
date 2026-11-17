@@ -160,7 +160,7 @@ const stackFields = `stackEntry { position stack { id number size baseRefName en
 
 var (
 	stackFieldsForList   = fmt.Sprintf(stackFields, "")
-	stackFieldsForDetail = fmt.Sprintf(stackFields, "commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }")
+	stackFieldsForDetail = fmt.Sprintf(stackFields, "commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 0) { checkRunCountsByState { state count } statusContextCountsByState { state count } } } } } }")
 )
 
 var pullRequestRowFields = `
@@ -171,7 +171,7 @@ var pullRequestRowFields = `
         comments { totalCount } reviewThreads { totalCount } reviews { totalCount }
         assignees(first: 3) { nodes { login } }
         labels(first: 6) { nodes { name color } }
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+        commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 0) { checkRunCountsByState { state count } statusContextCountsByState { state count } } } } } }
         ` + stackFieldsForList
 
 var searchPullRequestsQuery = `

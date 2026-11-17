@@ -149,17 +149,49 @@ type lastCommit struct {
 		Commit struct {
 			StatusCheckRollup *struct {
 				State    string
-				Contexts nodeList[rawCheck]
+				Contexts struct {
+					nodeList[rawCheck]
+					CheckRunCountsByState      []stateCount
+					StatusContextCountsByState []stateCount
+				}
 			}
 		}
 	}
 }
 
+type stateCount struct {
+	State string
+	Count int
+}
+
+// checksState sums up the checks the way the Checks tab judges them. GitHub's
+// own rollup fails a commit for a cancelled run, even one a rerun superseded.
 func (commits lastCommit) checksState() string {
 	if len(commits.Nodes) == 0 || commits.Nodes[0].Commit.StatusCheckRollup == nil {
 		return ""
 	}
-	return commits.Nodes[0].Commit.StatusCheckRollup.State
+	rollup := commits.Nodes[0].Commit.StatusCheckRollup
+	failed, pending := false, false
+	for _, each := range append(rollup.Contexts.CheckRunCountsByState, rollup.Contexts.StatusContextCountsByState...) {
+		if each.Count == 0 {
+			continue
+		}
+		switch each.State {
+		case "FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE":
+			failed = true
+		case "PENDING", "EXPECTED", "IN_PROGRESS", "QUEUED", "WAITING":
+			pending = true
+		}
+	}
+	switch {
+	case failed:
+		return "FAILURE"
+	case pending:
+		return "PENDING"
+	case len(rollup.Contexts.CheckRunCountsByState)+len(rollup.Contexts.StatusContextCountsByState) == 0:
+		return rollup.State
+	}
+	return "SUCCESS"
 }
 
 // Health reports the rate-limit budget and whether requests are on hold.

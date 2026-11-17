@@ -213,6 +213,8 @@ query($owner: String!, $name: String!, $number: Int!) {
             statusCheckRollup {
               state
               contexts(first: 100) {
+                checkRunCountsByState { state count }
+                statusContextCountsByState { state count }
                 nodes {
                   __typename
                   ... on CheckRun {
