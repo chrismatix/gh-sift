@@ -338,11 +338,19 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 	current.loadedAt = time.Now()
 	// The cursor stays on the row it was on, wherever a refresh moved it.
 	selected := current.key(current.cursor)
+	seen := map[string]bool{}
+	if message.appended {
+		for index := range current.count() {
+			seen[current.key(index)] = true
+		}
+	}
+	var repeated bool
 	if message.view == config.IssuesView {
 		page := message.issues
 		if !message.appended {
 			current.issues = nil
 		}
+		page.Rows, repeated = withoutSeen(page.Rows, seen, func(row gh.IssueRow) string { return fmt.Sprintf("%s#%d", row.Repository, row.Number) })
 		current.issues = append(current.issues, page.Rows...)
 		current.totalCount, current.hasNextPage, current.endCursor = page.TotalCount, page.HasNextPage, page.EndCursor
 	} else {
@@ -351,6 +359,7 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 			list.flashChanges(app, current.pullRequests, page.Rows)
 			current.pullRequests = nil
 		}
+		page.Rows, repeated = withoutSeen(page.Rows, seen, func(row gh.PullRequestRow) string { return fmt.Sprintf("%s#%d", row.Repository, row.Number) })
 		current.pullRequests = append(current.pullRequests, page.Rows...)
 		current.totalCount, current.hasNextPage, current.endCursor = page.TotalCount, page.HasNextPage, page.EndCursor
 	}
@@ -364,10 +373,30 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 		list.cache[string(message.view)+"|"+list.query(app, current)] = cachedSection{TotalCount: current.totalCount, PullRequests: current.pullRequests, Issues: current.issues}
 		saveSectionCache(list.cache)
 	}
-	if current == list.current() {
-		return list.schedulePreview(app)
+	var commands []tea.Cmd
+	// A repeat means the order changed between pages, so a row that moved up
+	// is missing from the earlier ones; refetching them all puts it back.
+	if repeated && message.appended {
+		commands = append(commands, list.fetch(app, message.view, message.index, false))
 	}
-	return nil
+	if current == list.current() {
+		commands = append(commands, list.schedulePreview(app))
+	}
+	return tea.Batch(commands...)
+}
+
+// withoutSeen drops rows already listed, or listed twice in the page itself.
+// Search pages by position, so a PR that moves up between page loads repeats.
+func withoutSeen[Row any](rows []Row, seen map[string]bool, key func(Row) string) ([]Row, bool) {
+	kept := rows[:0:0]
+	for _, row := range rows {
+		if seen[key(row)] {
+			continue
+		}
+		seen[key(row)] = true
+		kept = append(kept, row)
+	}
+	return kept, len(kept) < len(rows)
 }
 
 // schedulePreview waits a beat before fetching the selected PR, so holding

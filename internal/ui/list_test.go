@@ -997,3 +997,36 @@ func TestFetchPagesReadsPastGitHubsPageSize(t *testing.T) {
 		t.Errorf("rows %d, limits %v, err %v", len(page.Rows), limits, err)
 	}
 }
+
+func TestListDropsARowRepeatedByTheNextPage(t *testing.T) {
+	limit := 2
+	options := Options{Config: listTestConfig()}
+	options.Config.PRSections = []config.PrsSectionConfig{{Title: "Mine", Filters: "author:@me", Limit: &limit}}
+	app := newTestApp(t, options)
+	nodes := append(listPullRequestNodes(), listPullRequestNode("octo/widgets", 103, "Shrink the uploader", "OPEN"))
+	order := nodes
+	listServePaged(app, func() []any { return order })
+	app.press("R")
+
+	// #7 is updated on GitHub and sorts first, so the next page starts with #102 again.
+	order = []any{nodes[2], nodes[0], nodes[1], nodes[3]}
+	app.press("j")
+	var numbers []int
+	for _, row := range app.list.current().pullRequests {
+		numbers = append(numbers, row.Number)
+	}
+	if !slices.Equal(numbers, []int{7, 101, 102}) {
+		t.Errorf("rows = %v; the repeat should go and the refetch should bring #7 in", numbers)
+	}
+	if row := app.list.current().selectedPullRequest(); row.Number != 102 {
+		t.Errorf("the cursor should stay on #102, is on #%d", row.Number)
+	}
+	app.press("j", "j")
+	numbers = numbers[:0]
+	for _, row := range app.list.current().pullRequests {
+		numbers = append(numbers, row.Number)
+	}
+	if !slices.Equal(numbers, []int{7, 101, 102, 103}) {
+		t.Errorf("after the next page: %v", numbers)
+	}
+}
