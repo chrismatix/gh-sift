@@ -2,6 +2,7 @@ package gh
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -73,6 +74,17 @@ type PullRequestRow struct {
 	// Zero and nil when the PR is not part of a stack.
 	StackPosition int
 	Stack         *Stack
+	// Set only on rows listed from a merge queue.
+	Queue *QueueEntry
+}
+
+type QueueEntry struct {
+	Position int
+	// QUEUED, AWAITING_CHECKS, MERGEABLE, UNMERGEABLE or LOCKED.
+	State      string
+	EnqueuedAt time.Time
+	// Zero when GitHub has no estimate.
+	EstimatedTimeToMerge time.Duration
 }
 
 type IssueRow struct {
@@ -151,13 +163,7 @@ var (
 	stackFieldsForDetail = fmt.Sprintf(stackFields, "commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }")
 )
 
-var searchPullRequestsQuery = `
-query($query: String!, $limit: Int!, $after: String) {
-  search(query: $query, type: ISSUE, first: $limit, after: $after) {
-    issueCount
-    pageInfo { hasNextPage endCursor }
-    nodes {
-      ... on PullRequest {
+var pullRequestRowFields = `
         id number title url state isDraft isInMergeQueue mergeable reviewDecision
         additions deletions headRefName baseRefName updatedAt createdAt
         author { login } authorAssociation
@@ -166,7 +172,32 @@ query($query: String!, $limit: Int!, $after: String) {
         assignees(first: 3) { nodes { login } }
         labels(first: 6) { nodes { name color } }
         commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
-        ` + stackFieldsForList + `
+        ` + stackFieldsForList
+
+var searchPullRequestsQuery = `
+query($query: String!, $limit: Int!, $after: String) {
+  search(query: $query, type: ISSUE, first: $limit, after: $after) {
+    issueCount
+    pageInfo { hasNextPage endCursor }
+    nodes {
+      ... on PullRequest {` + pullRequestRowFields + `
+      }
+    }
+  }
+}`
+
+var mergeQueueQuery = `
+query($owner: String!, $name: String!, $branch: String, $limit: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    mergeQueue(branch: $branch) {
+      entries(first: $limit, after: $after) {
+        totalCount
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          position state enqueuedAt estimatedTimeToMerge
+          pullRequest {` + pullRequestRowFields + `
+          }
+        }
       }
     }
   }
@@ -246,6 +277,53 @@ func (client *Client) SearchPullRequests(filters string, limit int, after string
 	}
 	for _, raw := range response.Search.Nodes {
 		page.Rows = append(page.Rows, raw.convert())
+	}
+	return page, nil
+}
+
+// MergeQueue lists the PRs queued to merge into a branch, first in line first.
+// An empty branch means the repository's default branch.
+func (client *Client) MergeQueue(repository, branch string, limit int, after string) (Page[PullRequestRow], error) {
+	owner, name, _ := strings.Cut(repository, "/")
+	var response struct {
+		Repository struct {
+			MergeQueue *struct {
+				Entries struct {
+					TotalCount int
+					PageInfo   struct {
+						HasNextPage bool
+						EndCursor   string
+					}
+					Nodes []struct {
+						Position             int
+						State                string
+						EnqueuedAt           time.Time
+						EstimatedTimeToMerge int
+						PullRequest          rawPullRequestRow
+					}
+				}
+			}
+		}
+	}
+	variables := map[string]any{"owner": owner, "name": name, "limit": limit, "branch": nil, "after": nil}
+	if branch != "" {
+		variables["branch"] = branch
+	}
+	if after != "" {
+		variables["after"] = after
+	}
+	if err := client.query(mergeQueueQuery, variables, &response); err != nil {
+		return Page[PullRequestRow]{}, err
+	}
+	queue := response.Repository.MergeQueue
+	if queue == nil {
+		return Page[PullRequestRow]{}, fmt.Errorf("%s has no merge queue on %s", repository, map[bool]string{true: "its default branch", false: branch}[branch == ""])
+	}
+	page := Page[PullRequestRow]{TotalCount: queue.Entries.TotalCount, HasNextPage: queue.Entries.PageInfo.HasNextPage, EndCursor: queue.Entries.PageInfo.EndCursor}
+	for _, node := range queue.Entries.Nodes {
+		row := node.PullRequest.convert()
+		row.Queue = &QueueEntry{Position: node.Position, State: node.State, EnqueuedAt: node.EnqueuedAt, EstimatedTimeToMerge: time.Duration(node.EstimatedTimeToMerge) * time.Second}
+		page.Rows = append(page.Rows, row)
 	}
 	return page, nil
 }

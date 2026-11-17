@@ -914,3 +914,30 @@ func TestListViewSurvivesATinyWindow(t *testing.T) {
 		}
 	}
 }
+
+func TestListShowsAMergeQueueSection(t *testing.T) {
+	options := Options{Config: listTestConfig()}
+	options.Config.PRSections = []config.PrsSectionConfig{{Title: "Queue", MergeQueue: &config.MergeQueueConfig{Repo: "octo/widgets"}}}
+	app := newTestApp(t, options)
+	node := listPullRequestNode("octo/widgets", 101, "Add retry to the uploader", "OPEN")
+	app.github.GraphQL("mergeQueue(branch:", ghtest.Reply(200, map[string]any{"repository": map[string]any{"mergeQueue": map[string]any{"entries": map[string]any{
+		"totalCount": 1, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": ""},
+		"nodes": []any{map[string]any{"position": 1, "state": "MERGEABLE", "enqueuedAt": listTimestamp(5 * time.Minute), "estimatedTimeToMerge": 120, "pullRequest": node}},
+	}}}}))
+	listServeDetail(app)
+	app.press("R")
+
+	app.expectScreen("merge queue octo/widgets → default branch", "1 merging · ~2m", "Add retry to the uploader")
+	if len(app.github.Find("search(")) != 0 {
+		t.Error("a merge queue section should not search")
+	}
+	// A preview load replaces the row's fields but must keep its queue place.
+	app.list.updateRow(&gh.PullRequest{PullRequestRow: gh.PullRequestRow{Repository: "octo/widgets", Number: 101}})
+	if app.list.current().pullRequests[0].Queue == nil {
+		t.Error("the queue entry should survive a detail refresh")
+	}
+	app.press("/")
+	if app.list.searching {
+		t.Error("a merge queue has no filters to edit")
+	}
+}

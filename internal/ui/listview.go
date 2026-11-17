@@ -109,6 +109,15 @@ func (list *listScreen) searchBar(app *App, limit int) []string {
 		prefix = "is:issue"
 	}
 	current := list.current()
+	if queue := current.mergeQueue; queue != nil {
+		branch := queue.Branch
+		if branch == "" {
+			branch = "default branch"
+		}
+		content := theme.faint().Render(" merge queue ") + theme.secondary().Render(queue.Repo+" → "+branch)
+		return strings.Split(lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(theme.PrimaryBorder).
+			Width(limit-2).MaxHeight(3).Render(truncate(content, limit-4)), "\n")
+	}
 	if repository := list.repositoryFilter(app, current.filters); repository != "" {
 		prefix += " " + repository
 	}
@@ -250,6 +259,9 @@ func (list *listScreen) pullRequestColumns(app *App, current *section) []column 
 		columns = append(columns, column{"", 3, single(func(row gh.PullRequestRow) string {
 			return list.flash(app, row, "state", theme.stateGlyph(row.State, row.IsDraft, row.IsInMergeQueue))
 		})})
+	}
+	if current.mergeQueue != nil {
+		columns = append(columns, column{"Queue", 24, single(func(row gh.PullRequestRow) string { return queueSummary(theme, row.Queue) })})
 	}
 	if compact && !hidden(layout.Repo) {
 		columns = append(columns, column{glyphRepo, columnWidth(layout.Repo, 20), single(func(row gh.PullRequestRow) string {
@@ -397,6 +409,9 @@ func (list *listScreen) preview(app *App, limit int) []string {
 		theme.faint().Render(fmt.Sprintf("by @%s · updated %s · ", row.Author, ago(row.UpdatedAt)))+
 			theme.success().Render(fmt.Sprintf("+%d", row.Additions))+" "+theme.failure().Render(fmt.Sprintf("-%d", row.Deletions)),
 	)
+	if row.Queue != nil {
+		lines = append(lines, theme.faint().Render("Queue     ")+queueSummary(theme, row.Queue)+theme.faint().Render(" · queued "+ago(row.Queue.EnqueuedAt)))
+	}
 	if row.Stack != nil {
 		stack := row.Stack
 		if detail != nil && detail.Stack != nil {
@@ -415,6 +430,28 @@ func (list *listScreen) preview(app *App, limit int) []string {
 		lines = append(lines, body...)
 	}
 	return lines
+}
+
+// queueSummary is a merge queue entry in a few words: place, state, estimate.
+func queueSummary(theme Theme, entry *gh.QueueEntry) string {
+	if entry == nil {
+		return ""
+	}
+	state := map[string]string{"QUEUED": "queued", "AWAITING_CHECKS": "checking", "MERGEABLE": "merging", "UNMERGEABLE": "failing", "LOCKED": "locked"}[entry.State]
+	style := theme.warning()
+	switch entry.State {
+	case "QUEUED":
+		style = theme.faint()
+	case "MERGEABLE":
+		style = theme.success()
+	case "UNMERGEABLE":
+		style = theme.failure()
+	}
+	text := theme.bold().Render(fmt.Sprintf("%d ", entry.Position)) + style.Render(state)
+	if estimate := entry.EstimatedTimeToMerge; estimate > 0 {
+		text += theme.faint().Render(fmt.Sprintf(" · ~%dm", max(int(estimate.Round(time.Minute)/time.Minute), 1)))
+	}
+	return text
 }
 
 func labelLine(theme Theme, labels []gh.Label) string {

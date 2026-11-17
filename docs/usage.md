@@ -22,6 +22,20 @@ gh-dash's default sections.
 - The list's glyphs need a [Nerd Font](https://www.nerdfonts.com), as in gh-dash.
 - `SIFT_READ_ONLY=1 gh sift` refuses every write.
 
+### Merge queue sections
+
+A PR section with `mergeQueue` in place of `filters` lists a repository's merge
+queue in order, with each entry's position, state and estimated time to merge.
+It is a sift addition that gh-dash does not know.
+
+```yaml
+prSections:
+  - title: Merge queue
+    mergeQueue:
+      repo: owner/name
+      branch: main   # optional; the default branch when left out
+```
+
 ## Keys
 
 `?` shows the keys of the screen you are on. The list keeps gh-dash's defaults

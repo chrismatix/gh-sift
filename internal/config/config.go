@@ -61,6 +61,14 @@ type PrsSectionConfig struct {
 	Limit   *int            `yaml:"limit,omitempty"`
 	Layout  PrsLayoutConfig `yaml:"layout,omitempty"`
 	Type    *ViewType       `yaml:"type,omitempty"`
+	// A sift addition: list a repository's merge queue instead of searching.
+	MergeQueue *MergeQueueConfig `yaml:"mergeQueue,omitempty"`
+}
+
+type MergeQueueConfig struct {
+	Repo string
+	// Empty means the repository's default branch.
+	Branch string `yaml:"branch,omitempty"`
 }
 
 type IssuesSectionConfig struct {

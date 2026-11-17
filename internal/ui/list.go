@@ -20,6 +20,7 @@ type section struct {
 	title        string
 	filters      string
 	limit        int
+	mergeQueue   *config.MergeQueueConfig
 	prLayout     config.PrsLayoutConfig
 	issueLayout  config.IssuesLayoutConfig
 	pullRequests []gh.PullRequestRow
@@ -115,7 +116,7 @@ func newListScreen(app *App) listScreen {
 		if configured.Limit != nil {
 			limit = *configured.Limit
 		}
-		list.prSections = append(list.prSections, &section{title: configured.Title, filters: configured.Filters, limit: limit, prLayout: layout})
+		list.prSections = append(list.prSections, &section{title: configured.Title, filters: configured.Filters, limit: limit, mergeQueue: configured.MergeQueue, prLayout: layout})
 	}
 	for _, configured := range app.config.IssuesSections {
 		layout, override := defaults.Layout.Issues, configured.Layout
@@ -186,6 +187,10 @@ func (current *section) selectedIssue() *gh.IssueRow {
 // query is what goes to GitHub: the filters with their template rendered
 // and, under smart filtering, narrowed to the repository sift started in.
 func (list *listScreen) query(app *App, current *section) string {
+	// Not a search; this only keys the section's cache.
+	if queue := current.mergeQueue; queue != nil {
+		return "merge-queue " + queue.Repo + " " + queue.Branch
+	}
 	filters := current.filters
 	functions := template.FuncMap{"nowModify": func(offset string) string {
 		// gh-dash documents filters like `updated:>={{ nowModify "-3w" }}`.
@@ -230,12 +235,15 @@ func (list *listScreen) fetch(app *App, view config.ViewType, index int, more bo
 	if more {
 		after = current.endCursor
 	}
-	query, limit, client := list.query(app, current), current.limit, app.client
+	query, limit, client, queue := list.query(app, current), current.limit, app.client, current.mergeQueue
 	return func() tea.Msg {
 		message := sectionLoadedMsg{view: view, index: index, generation: generation, appended: more}
-		if view == config.IssuesView {
+		switch {
+		case view == config.IssuesView:
 			message.issues, message.err = client.SearchIssues(query, limit, after)
-		} else {
+		case queue != nil:
+			message.pullRequests, message.err = client.MergeQueue(queue.Repo, queue.Branch, limit, after)
+		default:
 			message.pullRequests, message.err = client.SearchPullRequests(query, limit, after)
 		}
 		return message
@@ -343,12 +351,13 @@ func (list *listScreen) updateRow(detail *gh.PullRequest) {
 	for _, current := range list.prSections {
 		for index := range current.pullRequests {
 			if row := &current.pullRequests[index]; row.Repository == detail.Repository && row.Number == detail.Number {
-				stack := row.Stack
+				stack, queue := row.Stack, row.Queue
 				*row = detail.PullRequestRow
 				// The row's own stack entries are enough for the list.
 				if detail.Stack == nil {
 					row.Stack = stack
 				}
+				row.Queue = queue
 			}
 		}
 	}
@@ -422,6 +431,10 @@ func (list *listScreen) switchView(app *App) tea.Cmd {
 }
 
 func (list *listScreen) startSearch(app *App) {
+	if list.current().mergeQueue != nil {
+		app.notify("a merge queue section lists the whole queue; it has no filters", false)
+		return
+	}
 	list.searching = true
 	list.search = textinput.New()
 	list.search.Prompt = ""

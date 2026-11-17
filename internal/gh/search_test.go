@@ -123,3 +123,47 @@ func TestNeighbourOfNoStack(t *testing.T) {
 		t.Error("a PR outside a stack has no neighbours")
 	}
 }
+
+func TestMergeQueueListsEntriesInOrder(t *testing.T) {
+	server, client := ghtest.New(t)
+	server.GraphQL("mergeQueue(branch:", ghtest.Reply(200, map[string]any{"repository": map[string]any{"mergeQueue": map[string]any{"entries": map[string]any{
+		"totalCount": 2, "pageInfo": map[string]any{"hasNextPage": false, "endCursor": "END"},
+		"nodes": []any{
+			map[string]any{"position": 1, "state": "AWAITING_CHECKS", "enqueuedAt": "2026-11-17T13:23:21Z", "estimatedTimeToMerge": 451,
+				"pullRequest": map[string]any{"number": 5, "title": "First", "repository": map[string]any{"nameWithOwner": "o/r"}}},
+			map[string]any{"position": 2, "state": "QUEUED", "enqueuedAt": "2026-11-17T13:25:09Z", "estimatedTimeToMerge": nil,
+				"pullRequest": map[string]any{"number": 6, "title": "Second", "repository": map[string]any{"nameWithOwner": "o/r"}}},
+		},
+	}}}}))
+
+	page, err := client.MergeQueue("o/r", "", 10, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if variables := server.Requests[0].Variables; variables["owner"] != "o" || variables["name"] != "r" || variables["branch"] != nil {
+		t.Errorf("variables = %v; an empty branch should ask for the default one", variables)
+	}
+	if page.TotalCount != 2 || len(page.Rows) != 2 || page.Rows[0].Number != 5 {
+		t.Fatalf("page = %+v", page)
+	}
+	first, second := page.Rows[0].Queue, page.Rows[1].Queue
+	if first.Position != 1 || first.State != "AWAITING_CHECKS" || first.EstimatedTimeToMerge.Seconds() != 451 || first.EnqueuedAt.IsZero() {
+		t.Errorf("first entry = %+v", first)
+	}
+	if second.EstimatedTimeToMerge != 0 {
+		t.Errorf("no estimate should stay zero: %+v", second)
+	}
+
+	client.MergeQueue("o/r", "release", 10, "CURSOR")
+	if variables := server.Requests[1].Variables; variables["branch"] != "release" || variables["after"] != "CURSOR" {
+		t.Errorf("variables = %v", variables)
+	}
+}
+
+func TestMergeQueueOnABranchWithoutOne(t *testing.T) {
+	server, client := ghtest.New(t)
+	server.GraphQL("mergeQueue(branch:", ghtest.Reply(200, map[string]any{"repository": map[string]any{"mergeQueue": nil}}))
+	if _, err := client.MergeQueue("o/r", "dev", 10, ""); err == nil || err.Error() != "o/r has no merge queue on dev" {
+		t.Errorf("err = %v", err)
+	}
+}
