@@ -35,19 +35,15 @@ Sift is young: it works for daily review, and the gaps are listed here.
   to the stacked layout (`2`), where each line is its own row.
 - More than 100 review threads or check runs per PR, and stacks deeper than 30,
   are cut off.
-- Release binaries, so `gh extension install chrismatix/gh-sift` does not work
-  yet.
 
 ## Next steps
 
-1. Release workflow with `gh-extension-precompile`, so the extension installs
-   without a Go toolchain.
-2. Notifications view, the last gh-dash screen people live in.
-3. Context expansion in the diff: fetch the file at the head commit and unfold
+1. Notifications view, the last gh-dash screen people live in.
+2. Context expansion in the diff: fetch the file at the head commit and unfold
    the gap between hunks, as hunk's `z` does.
-4. A "what changed since my last review" diff (compare against the commit of
+3. A "what changed since my last review" diff (compare against the commit of
    the viewer's latest review), next to the hunk-level read marks.
-5. Editing and deleting pending comments, and rendering suggestions as a
+4. Editing and deleting pending comments, and rendering suggestions as a
    small diff.
-6. Local diffs when the repository is checked out (`repoPaths`), for PRs too
+5. Local diffs when the repository is checked out (`repoPaths`), for PRs too
    large for the API and for full-file context.

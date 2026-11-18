@@ -29,13 +29,11 @@ What it feels like:
 
 ## Installation
 
-No release binaries yet, so build from a checkout (Go 1.26+):
-
 ```shell
-git clone https://github.com/chrismatix/gh-sift && cd gh-sift
-go build -o gh-sift .
-gh extension install .
+gh extension install chrismatix/gh-sift
 ```
+
+`gh extension upgrade gh-sift` updates it. To build from a checkout instead (Go 1.26+), run `go build -o gh-sift .` and `gh extension install .` in it.
 
 Then run `gh sift`, or open one PR directly with `gh sift 123`, a PR URL, or `gh sift HEAD` for the branch you are on.
 
@@ -53,4 +51,4 @@ Then run `gh sift`, or open one PR directly with `gh sift 123`, a PR URL, or `gh
 
 ## Versioning
 
-Sift is pre-release: anything may change until there is a tagged version.
+Sift is below 1.0: keys and behaviour may still change between releases.
