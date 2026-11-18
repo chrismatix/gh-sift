@@ -269,12 +269,18 @@ func (screen *pullRequestScreen) startReview(app *App) tea.Cmd {
 	title := "Submit review"
 	if pending > 0 {
 		title = fmt.Sprintf("Submit review with %s", plural(pending, "pending comment"))
+		// First, so a then enter sends the comments without stopping at the composer.
+		items = append([]menuItem{{label: "Submit the " + plural(pending, "comment"), hint: "no summary, no verdict", value: "SUBMIT"}}, items...)
 		items = append(items, menuItem{label: "Discard the pending review", hint: "deletes its " + plural(pending, "comment"), value: "DISCARD"})
 	}
 	reload := func(app *App) tea.Cmd { return tea.Batch(app.loadPullRequest(key, true), app.list.refreshCurrent(app)) }
 	app.openMenu(title, items, func(app *App, event string) tea.Cmd {
-		if event == "DISCARD" {
+		switch event {
+		case "DISCARD":
 			return app.run("discarding", func() error { return app.client.DiscardPendingReview(detail.PendingReviewID) }, "pending review discarded", reload)
+		case "SUBMIT":
+			return app.run("submitting review", func() error { return app.client.SubmitReview(detail.ID, detail.PendingReviewID, "COMMENT", "") },
+				"review submitted: "+plural(pending, "comment"), reload)
 		}
 		initial := ""
 		if event == "APPROVE" {

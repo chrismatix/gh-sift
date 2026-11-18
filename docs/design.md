@@ -90,6 +90,7 @@ which parts are new.
 is added to the viewer's pending review (`addPullRequestReviewThread`), so it
 shows up as pending on github.com too and nothing is lost if sift exits.
 Submitting (approve, request changes, comment) publishes them together.
+With comments pending, `a` then `enter` publishes them with no summary.
 Replies and resolving go straight through.
 
 **The Checks tab follows gh-enhance.** dlvhdr's gh-enhance lays GitHub Actions

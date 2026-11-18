@@ -285,7 +285,9 @@ func TestPrViewReview(t *testing.T) {
 		name    string
 		pending bool
 		// Menu keys that pick the verdict, then the summary typed into the composer.
-		menu     string
+		menu string
+		// The menu item sends the review itself, with no composer.
+		direct   bool
 		summary  string
 		required bool
 		mutation string
@@ -296,7 +298,8 @@ func TestPrViewReview(t *testing.T) {
 		{name: "approve with the default comment", menu: "j", mutation: "addPullRequestReview", event: "APPROVE", body: "LGTM", toast: "review submitted: Approve"},
 		{name: "request changes", menu: "jj", summary: "please fix", mutation: "addPullRequestReview", event: "REQUEST_CHANGES", body: "please fix", toast: "review submitted: Request changes"},
 		{name: "comment needs a summary", required: true, summary: "a summary", mutation: "addPullRequestReview", event: "COMMENT", body: "a summary", toast: "review submitted: Comment"},
-		{name: "comment with pending comments may be empty", pending: true, mutation: "submitPullRequestReview", event: "COMMENT", toast: "review submitted: Comment"},
+		{name: "comment with pending comments may be empty", pending: true, menu: "j", mutation: "submitPullRequestReview", event: "COMMENT", toast: "review submitted: Comment"},
+		{name: "pending comments go out without a summary", pending: true, direct: true, mutation: "submitPullRequestReview", event: "COMMENT", toast: "review submitted: 1 comment"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -321,7 +324,9 @@ func TestPrViewReview(t *testing.T) {
 			if test.summary != "" {
 				app.send(tea.PasteMsg{Content: test.summary})
 			}
-			app.press("ctrl+s")
+			if !test.direct {
+				app.press("ctrl+s")
+			}
 			app.expectScreen(test.toast)
 
 			variables := prVariables(t, app.github, test.mutation)
@@ -354,8 +359,8 @@ func TestPrViewReviewTitlesAndDiscard(t *testing.T) {
 	prAnswer(app.github, "deletePullRequestReview")
 	app.expectScreen("Files 2 ● 1 pending")
 	app.press("a")
-	app.expectScreen("Submit review with 1 pending comment", "Discard the pending review", "deletes its 1 comment")
-	app.press("jjj", "enter")
+	app.expectScreen("Submit review with 1 pending comment", "Submit the 1 comment", "Discard the pending review", "deletes its 1 comment")
+	app.press("jjjj", "enter")
 	app.expectScreen("pending review discarded")
 	if variables := prVariables(t, app.github, "deletePullRequestReview"); variables["id"] != "REVIEW_1" {
 		t.Errorf("discarded %v, want REVIEW_1", variables["id"])
