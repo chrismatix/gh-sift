@@ -51,8 +51,8 @@ gh-dash's schema and layering (defaults, global `config.yml`, then `--config`
 / `$GH_DASH_CONFIG` / `<repo>/.gh-dash.yml`, with `include`, sections replaced
 per layer and keybindings unioned by key). Keys with a `builtin:` rebind the
 builtin, keys with a `command:` run as custom commands and shadow builtins,
-exactly as in gh-dash. Not honoured: `pager.diff` (the diff is built in),
-notification and branch sections (not built yet).
+exactly as in gh-dash. Not honoured: `pager.diff` (the diff is built in)
+and branch sections (not built yet).
 
 **One screen stack instead of panes.** `list → PR view → diff`. `enter` goes
 in, `esc` or `q` goes back, and the list keeps its position. The PR view has
@@ -114,6 +114,15 @@ seconds for twenty PRs, so the list query leaves it out). The last result of
 each section is kept in `~/.cache/gh-sift/sections.json`, shown at once on
 start and replaced when the search returns. PR details and diffs are cached in
 memory for the session, and stack neighbours are fetched ahead.
+
+**Notifications follow gh-dash, except where a PR opens.** The REST
+`/notifications` endpoint has no search, so `repo:` picks the endpoint and
+`is:` and `reason:` filter the pages client side, reading on until a section's
+limit is met. `enter` on a PR notification opens sift's PR view rather than the
+browser, and marks the thread read as GitHub would. GitHub keeps listing done
+threads, so `~/.local/state/gh-sift/done.json` hides them until they change
+again, like gh-dash's own done store. Marking everything read asks first,
+because GitHub cannot mark a thread unread.
 
 **A read-only switch for testing.** `SIFT_READ_ONLY=1` makes the client
 refuse every write. It exists so the app can be exercised against

@@ -12,9 +12,10 @@ import (
 // list paint at once on start while the real search, which takes a few
 // seconds, runs behind it.
 type cachedSection struct {
-	TotalCount   int
-	PullRequests []gh.PullRequestRow
-	Issues       []gh.IssueRow
+	TotalCount    int
+	PullRequests  []gh.PullRequestRow
+	Issues        []gh.IssueRow
+	Notifications []gh.Notification
 }
 
 func sectionCachePath() string {

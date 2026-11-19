@@ -126,29 +126,34 @@ func (theme Theme) stack() lipgloss.Style     { return theme.text(theme.Stack) }
 
 // Nerd Font glyphs, the same ones gh-dash draws.
 const (
-	glyphOpenPR      = ""
-	glyphDraftPR     = ""
-	glyphClosedPR    = ""
-	glyphMergedPR    = ""
-	glyphMergeQueue  = ""
-	glyphOpenIssue   = ""
-	glyphClosedIssue = ""
-	glyphComments    = ""
-	glyphReview      = "\U000f0be2"
-	glyphApproved    = "\U000f012c"
-	glyphChanges     = ""
-	glyphCommented   = ""
-	glyphWaiting     = ""
-	glyphSuccess     = ""
-	glyphFailure     = "\U000f0159"
-	glyphNone        = ""
-	glyphCI          = ""
-	glyphLines       = ""
-	glyphUpdated     = "\U000f19bb"
-	glyphCreated     = "\U000f1862"
-	glyphRepo        = ""
-	glyphStack       = "\U000f0328"
-	glyphReactions   = ""
+	glyphOpenPR       = ""
+	glyphDraftPR      = ""
+	glyphClosedPR     = ""
+	glyphMergedPR     = ""
+	glyphMergeQueue   = ""
+	glyphOpenIssue    = ""
+	glyphClosedIssue  = ""
+	glyphComments     = ""
+	glyphReview       = "\U000f0be2"
+	glyphApproved     = "\U000f012c"
+	glyphChanges      = ""
+	glyphCommented    = ""
+	glyphWaiting      = ""
+	glyphSuccess      = ""
+	glyphFailure      = "\U000f0159"
+	glyphNone         = ""
+	glyphCI           = ""
+	glyphLines        = ""
+	glyphUpdated      = "\U000f19bb"
+	glyphCreated      = "\U000f1862"
+	glyphRepo         = ""
+	glyphStack        = "\U000f0328"
+	glyphReactions    = ""
+	glyphUnread       = "\uf444"
+	glyphNotification = "\uf0f3"
+	glyphDiscussion   = "\uf442"
+	glyphRelease      = "\uf412"
+	glyphCommit       = "\uf417"
 )
 
 // stateStyle colours a PR by its state, the same way everywhere.
@@ -216,4 +221,23 @@ func (theme Theme) reviewGlyph(decision string, reviewCount int) string {
 		return theme.faint().Render(glyphCommented)
 	}
 	return theme.warning().Render(glyphWaiting)
+}
+
+// notificationGlyph is the icon of a notification's subject type.
+func (theme Theme) notificationGlyph(subjectType string) string {
+	switch subjectType {
+	case "PullRequest":
+		return theme.text(theme.Open).Render(glyphOpenPR)
+	case "Issue":
+		return theme.text(theme.Open).Render(glyphOpenIssue)
+	case "Discussion":
+		return theme.primary().Render(glyphDiscussion)
+	case "Release":
+		return theme.text(theme.Focus).Render(glyphRelease)
+	case "Commit":
+		return theme.secondary().Render(glyphCommit)
+	case "CheckSuite":
+		return theme.warning().Render(glyphCI)
+	}
+	return theme.secondary().Render(glyphNotification)
 }

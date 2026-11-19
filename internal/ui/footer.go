@@ -30,13 +30,16 @@ func (app *App) footer() string {
 		left = " " + theme.faint().Render(app.pullRequest.hints(app))
 	default:
 		active, inactive := theme.success().Bold(true), theme.faint()
-		pullRequests, issues := inactive, inactive
-		if app.list.kind == config.PRsView {
+		pullRequests, issues, notifications := inactive, inactive, inactive
+		switch app.list.kind {
+		case config.PRsView:
 			pullRequests = active
-		} else {
+		case config.IssuesView:
 			issues = active
+		case config.NotificationsView:
+			notifications = active
 		}
-		left = " " + pullRequests.Render(glyphOpenPR+" PRs") + separator + issues.Render(glyphOpenIssue+" Issues")
+		left = " " + notifications.Render(glyphNotification) + separator + pullRequests.Render(glyphOpenPR+" PRs") + separator + issues.Render(glyphOpenIssue+" Issues")
 		if app.repository != "" {
 			left += separator + theme.secondary().Render(glyphRepo+" "+app.repository)
 		}
@@ -88,6 +91,11 @@ func (app *App) helpBox() string {
 	case app.screen == screenPullRequest:
 		half := (len(pullRequestHelp) + 1) / 2
 		groups = []group{{"Pull request", pullRequestHelp[:half]}, {"", pullRequestHelp[half:]}}
+	case app.list.kind == config.NotificationsView:
+		groups = []group{{"Navigation and app", helpFor(app.keys.universal, app.keys.customUniversal...)}, {"Notifications", helpFor(app.keys.notifications, app.keys.customNotifications...)}}
+		if custom := append(helpForCustom(app.keys.customNotifications), helpForCustom(app.keys.customUniversal)...); len(custom) > 0 {
+			groups = append(groups, group{"Custom", custom})
+		}
 	case app.list.kind == config.IssuesView:
 		groups = []group{{"Navigation and app", helpFor(app.keys.universal, app.keys.customUniversal...)}, {"Issues", helpFor(app.keys.issues, app.keys.customIssues...)}}
 		if custom := append(helpForCustom(app.keys.customIssues), helpForCustom(app.keys.customUniversal)...); len(custom) > 0 {

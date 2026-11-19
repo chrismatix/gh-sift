@@ -36,6 +36,34 @@ prSections:
       branch: main   # optional; the default branch when left out
 ```
 
+### Notifications
+
+`s` cycles PRs → issues → notifications, as in gh-dash, and
+`defaults.view: notifications` starts there. Sections come from
+`notificationsSections` (gh-dash's eight defaults otherwise), each filtered by:
+
+- `repo:owner/name`: that repository's notifications only (smart filtering
+  adds the current one, as for PRs).
+- `is:unread`, `is:read`, `is:all`: which threads to list. Without one, read
+  threads are listed too unless `includeReadNotifications: false`.
+- `reason:author`, `reason:mention`, `reason:review-requested` and the rest of
+  GitHub's reasons; `reason:participating` means author, comment, mention,
+  review requested, assign and state change.
+
+| Key | Does |
+|---|---|
+| `enter` | a PR opens in sift's PR view, anything else in the browser; marks it read |
+| `o` | open in the browser and mark read |
+| `m` / `M` | mark read / mark every notification read (asks first) |
+| `D` / `alt+d` | mark done / mark the whole section done (asks first) |
+| `u` | unsubscribe from the thread |
+| `t` | toggle smart filtering |
+
+Done threads are remembered in `~/.local/state/gh-sift/done.json`, because
+GitHub keeps listing them; one with new activity comes back. Custom commands
+under `keybindings.notifications` get `{{.RepoName}}` and `{{.PrNumber}}` or
+`{{.IssueNumber}}`, and PR and issue commands also run on those subjects.
+
 ## Keys
 
 `?` shows the keys of the screen you are on. The list keeps gh-dash's defaults

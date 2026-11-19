@@ -258,6 +258,16 @@ func Default() Config {
 			{Title: "Assigned", Filters: "is:open assignee:@me"},
 			{Title: "Involved", Filters: "is:open involves:@me -author:@me"},
 		},
+		NotificationsSections: []NotificationsSectionConfig{
+			{Title: "All"},
+			{Title: "Created", Filters: "reason:author"},
+			{Title: "Participating", Filters: "reason:participating"},
+			{Title: "Mentioned", Filters: "reason:mention"},
+			{Title: "Review Requested", Filters: "reason:review-requested"},
+			{Title: "Assigned", Filters: "reason:assign"},
+			{Title: "Subscribed", Filters: "reason:subscribed"},
+			{Title: "Team Mentioned", Filters: "reason:team-mention"},
+		},
 		RepoPaths: map[string]string{},
 		Theme: &ThemeConfig{
 			Ui: UIThemeConfig{SectionsShowCount: true, Table: TableUIThemeConfig{ShowSeparator: true}},

@@ -398,10 +398,14 @@ func TestListPreviewOfAnIssue(t *testing.T) {
 	app.press("j")
 	app.expectScreen("Progress bar stalls at 99%")
 	app.press("s")
-	if app.list.kind != config.PRsView {
-		t.Error("s should switch back to PRs")
+	if app.list.kind != config.NotificationsView {
+		t.Error("s should go on to notifications")
 	}
 	app.press("s")
+	if app.list.kind != config.PRsView {
+		t.Error("s should come back to PRs")
+	}
+	app.press("ss")
 	if count := len(app.github.Find("on Issue")); count != 3 {
 		t.Errorf("each issue section should be fetched once, not %d times in all", count)
 	}

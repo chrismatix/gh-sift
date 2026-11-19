@@ -20,9 +20,12 @@ type keymap struct {
 	universal       []binding
 	prs             []binding
 	issues          []binding
+	notifications   []binding
 	customUniversal []config.Keybinding
 	customPRs       []config.Keybinding
 	customIssues    []config.Keybinding
+	// Custom notification commands, as in gh-dash, get RepoName and PrNumber or IssueNumber.
+	customNotifications []config.Keybinding
 }
 
 func defaultKeymap() keymap {
@@ -82,8 +85,21 @@ func defaultKeymap() keymap {
 			{"close", []string{"x"}, "close"},
 			{"reopen", []string{"X"}, "reopen"},
 			{"toggleSmartFiltering", []string{"t"}, "toggle smart filtering"},
-			{"viewPrs", []string{"s"}, "switch to PRs"},
+			{"viewPrs", []string{"s"}, "switch to notifications"},
 			{"checkout", nil, ""},
+		},
+		notifications: []binding{
+			{"view", []string{"enter"}, "open (marks it read)"},
+			{"markAsRead", []string{"m"}, "mark as read"},
+			{"markAllAsRead", []string{"M"}, "mark all as read"},
+			{"markAsDone", []string{"D"}, "mark as done"},
+			{"markAllAsDone", []string{"alt+d"}, "mark all as done"},
+			{"unsubscribe", []string{"u"}, "unsubscribe"},
+			{"open", []string{"o"}, "open in GitHub (marks it read)"},
+			{"toggleSmartFiltering", []string{"t"}, "toggle smart filtering"},
+			{"switchToPRs", []string{"s"}, "switch to PRs"},
+			{"toggleBookmark", nil, ""},
+			{"sortByRepo", nil, ""},
 		},
 	}
 }
@@ -97,7 +113,10 @@ func newKeymap(configured config.Keybindings) (keymap, error) {
 	if keys.customPRs, err = rebind(keys.prs, configured.Prs, "pr"); err != nil {
 		return keys, err
 	}
-	keys.customIssues, err = rebind(keys.issues, configured.Issues, "issue")
+	if keys.customIssues, err = rebind(keys.issues, configured.Issues, "issue"); err != nil {
+		return keys, err
+	}
+	keys.customNotifications, err = rebind(keys.notifications, configured.Notifications, "notification")
 	return keys, err
 }
 

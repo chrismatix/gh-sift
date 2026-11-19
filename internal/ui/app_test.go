@@ -225,8 +225,8 @@ func TestAppHelpPerScreen(t *testing.T) {
 		want []string
 	}{
 		{[]string{"?"}, []string{"Custom", "switch branch", "nvim ."}},
-		{[]string{"s", "?"}, []string{"Issues", "switch to PRs", "echo {{.IssueNumber}}"}},
-		{[]string{"s", "enter", "?"}, []string{"Pull request", "Overview, Checks, Threads, Files"}},
+		{[]string{"s", "?"}, []string{"Issues", "switch to notifications", "echo {{.IssueNumber}}"}},
+		{[]string{"ss", "enter", "?"}, []string{"Pull request", "Overview, Checks, Threads, Files"}},
 		{[]string{"2", "?"}, []string{"Checks", "rerun failed runs"}},
 		{[]string{"4", "?"}, []string{"Diff", "next / previous hunk"}},
 	}
@@ -328,7 +328,9 @@ func TestAppCustomCommandTemplateErrors(t *testing.T) {
 	cfg.Keybindings.Universal = []config.Keybinding{{Key: "U", Command: "echo {{"}}
 	app := listApp(t, Options{Config: cfg})
 	app.press("ctrl+b")
-	app.expectScreen("keybinding template:", "Nope")
+	if !strings.Contains(app.toast.text, "keybinding template:") || !strings.Contains(app.toast.text, "Nope") {
+		t.Errorf("toast %q should name the missing key", app.toast.text)
+	}
 	app.press("U")
 	app.expectScreen("keybinding template:", "unclosed action")
 	// An issue has no PR number: the issue binding is the one that ran.

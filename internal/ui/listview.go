@@ -104,10 +104,7 @@ func (list *listScreen) tabs(app *App) []string {
 
 func (list *listScreen) searchBar(app *App, limit int) []string {
 	theme := app.theme
-	prefix := "is:pr"
-	if list.kind == config.IssuesView {
-		prefix = "is:issue"
-	}
+	prefix := map[config.ViewType]string{config.PRsView: "is:pr", config.IssuesView: "is:issue"}[list.kind]
 	current := list.current()
 	if queue := current.mergeQueue; queue != nil {
 		branch := queue.Branch
@@ -119,7 +116,7 @@ func (list *listScreen) searchBar(app *App, limit int) []string {
 			Width(limit-2).MaxHeight(3).Render(truncate(content, limit-4)), "\n")
 	}
 	if repository := list.repositoryFilter(app, current.filters); repository != "" {
-		prefix += " " + repository
+		prefix = strings.TrimSpace(prefix + " " + repository)
 	}
 	border := theme.PrimaryBorder
 	content := theme.faint().Render(" "+prefix+" ") + theme.secondary().Render(current.filters)
@@ -139,9 +136,12 @@ func (list *listScreen) table(app *App, limit, height int) []string {
 	lines := list.searchBar(app, inner)
 
 	var columns []column
-	if list.kind == config.IssuesView {
+	switch list.kind {
+	case config.IssuesView:
 		columns = list.issueColumns(app, current)
-	} else {
+	case config.NotificationsView:
+		columns = list.notificationColumns(app, current)
+	default:
 		columns = list.pullRequestColumns(app, current)
 	}
 	fixed := 0
@@ -394,6 +394,36 @@ func (list *listScreen) preview(app *App, limit int) []string {
 			lines = append(lines, "", labels)
 		}
 		return append(append(lines, ""), app.markdown(issue.Body, limit)...)
+	}
+	if notification := current.selectedNotification(); notification != nil {
+		where := notification.Repository
+		if notification.Number > 0 {
+			where += fmt.Sprintf(" · #%d", notification.Number)
+		}
+		lines := []string{"", theme.faint().Render(where)}
+		for _, line := range wrap(notification.Title, limit) {
+			lines = append(lines, theme.bold().Render(line))
+		}
+		state := theme.faint().Render("read")
+		if notification.Unread {
+			state = theme.text(theme.Focus).Render(glyphUnread + " unread")
+		}
+		lines = append(lines, "", theme.notificationGlyph(notification.Type)+" "+state+
+			theme.faint().Render(fmt.Sprintf(" · %s · updated %s", strings.ReplaceAll(notification.Reason, "_", " "), ago(notification.UpdatedAt))))
+		if notification.Type != "PullRequest" {
+			return append(lines, "", theme.faint().Render("enter opens it in the browser and marks it read"))
+		}
+		lines = append(lines, "", theme.faint().Render("enter opens the PR and marks it read"))
+		detail := app.data(pullRequestKey{notification.Repository, notification.Number}).detail
+		if detail == nil {
+			return append(lines, "", theme.faint().Render(app.spinner()+" loading…"))
+		}
+		lines = append(append(lines, ""), statusLines(app, detail, limit)...)
+		if body := app.markdown(detail.Body, limit); len(body) > 0 {
+			lines = append(lines, "", theme.text(theme.FaintBorder).Render(strings.Repeat("─", limit)), "")
+			lines = append(lines, body...)
+		}
+		return lines
 	}
 	row := current.selectedPullRequest()
 	if row == nil {

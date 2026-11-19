@@ -2,7 +2,10 @@ package ui
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -17,34 +20,37 @@ import (
 )
 
 type section struct {
-	title        string
-	filters      string
-	limit        int
-	mergeQueue   *config.MergeQueueConfig
-	prLayout     config.PrsLayoutConfig
-	issueLayout  config.IssuesLayoutConfig
-	pullRequests []gh.PullRequestRow
-	issues       []gh.IssueRow
-	totalCount   int
-	hasNextPage  bool
-	endCursor    string
-	loading      bool
-	loadingMore  bool
-	loadedAt     time.Time
-	err          error
-	cursor       int
-	top          int
+	title         string
+	filters       string
+	limit         int
+	mergeQueue    *config.MergeQueueConfig
+	prLayout      config.PrsLayoutConfig
+	issueLayout   config.IssuesLayoutConfig
+	pullRequests  []gh.PullRequestRow
+	issues        []gh.IssueRow
+	notifications []gh.Notification
+	totalCount    int
+	hasNextPage   bool
+	endCursor     string
+	loading       bool
+	loadingMore   bool
+	loadedAt      time.Time
+	err           error
+	cursor        int
+	top           int
 	// Bumped on every refetch so a slow, superseded response is dropped.
 	generation int
 }
 
 type listScreen struct {
-	kind          config.ViewType
-	prSections    []*section
-	issueSections []*section
-	prIndex       int
-	issueIndex    int
-	previewOpen   bool
+	kind                 config.ViewType
+	prSections           []*section
+	issueSections        []*section
+	notificationSections []*section
+	prIndex              int
+	issueIndex           int
+	notificationIndex    int
+	previewOpen          bool
 	// Set by P: the preview on the other side from where the config puts it.
 	flipPreview    bool
 	previewScroll  int
@@ -52,7 +58,10 @@ type listScreen struct {
 	smartFiltering bool
 	searching      bool
 	search         textinput.Model
-	issuesFetched  bool
+	fetched        map[config.ViewType]bool
+	// Notification threads marked done (id → updated_at then), mirrored to
+	// disk: GitHub still lists them, so sift hides them until they change.
+	done map[string]time.Time
 	// Last results by view and query, mirrored to disk.
 	cache map[string]cachedSection
 	// When a reload changed a row's icon, so the new icon can flash briefly.
@@ -65,13 +74,14 @@ type flashKey struct {
 }
 
 type sectionLoadedMsg struct {
-	view         config.ViewType
-	index        int
-	generation   int
-	appended     bool
-	pullRequests gh.Page[gh.PullRequestRow]
-	issues       gh.Page[gh.IssueRow]
-	err          error
+	view          config.ViewType
+	index         int
+	generation    int
+	appended      bool
+	pullRequests  gh.Page[gh.PullRequestRow]
+	issues        gh.Page[gh.IssueRow]
+	notifications gh.Page[gh.Notification]
+	err           error
 }
 
 // previewMsg fires a moment after the cursor settles on a row.
@@ -96,8 +106,10 @@ func newListScreen(app *App) listScreen {
 		kind:           defaults.View,
 		previewOpen:    defaults.Preview.Open,
 		smartFiltering: app.config.SmartFilteringAtLaunch,
+		fetched:        map[config.ViewType]bool{},
+		done:           map[string]time.Time{},
 	}
-	if list.kind != config.IssuesView {
+	if list.kind != config.IssuesView && list.kind != config.NotificationsView {
 		list.kind = config.PRsView
 	}
 	for _, configured := range app.config.PRSections {
@@ -132,6 +144,22 @@ func newListScreen(app *App) listScreen {
 		}
 		list.issueSections = append(list.issueSections, &section{title: configured.Title, filters: configured.Filters, limit: limit, issueLayout: layout})
 	}
+	for _, configured := range app.config.NotificationsSections {
+		limit := defaults.NotificationsLimit
+		if configured.Limit != nil {
+			limit = *configured.Limit
+		}
+		list.notificationSections = append(list.notificationSections, &section{title: configured.Title, filters: configured.Filters, limit: limit})
+	}
+	if contents, err := os.ReadFile(donePath()); err == nil {
+		_ = json.Unmarshal(contents, &list.done)
+	}
+	// GitHub drops old threads too, so older marks only take up room.
+	for id, doneAt := range list.done {
+		if time.Since(doneAt) > 90*24*time.Hour {
+			delete(list.done, id)
+		}
+	}
 	list.cache = loadSectionCache()
 	for _, current := range list.prSections {
 		cached := list.cache[string(config.PRsView)+"|"+list.query(app, current)]
@@ -141,19 +169,33 @@ func newListScreen(app *App) listScreen {
 		cached := list.cache[string(config.IssuesView)+"|"+list.query(app, current)]
 		current.issues, current.totalCount = cached.Issues, cached.TotalCount
 	}
+	for _, current := range list.notificationSections {
+		cached := list.cache[string(config.NotificationsView)+"|"+list.query(app, current)]
+		current.notifications, current.totalCount = cached.Notifications, cached.TotalCount
+	}
 	return list
 }
 
 func (list *listScreen) sections() []*section {
-	if list.kind == config.IssuesView {
+	return list.sectionsOf(list.kind)
+}
+
+func (list *listScreen) sectionsOf(view config.ViewType) []*section {
+	switch view {
+	case config.IssuesView:
 		return list.issueSections
+	case config.NotificationsView:
+		return list.notificationSections
 	}
 	return list.prSections
 }
 
 func (list *listScreen) index() *int {
-	if list.kind == config.IssuesView {
+	switch list.kind {
+	case config.IssuesView:
 		return &list.issueIndex
+	case config.NotificationsView:
+		return &list.notificationIndex
 	}
 	return &list.prIndex
 }
@@ -167,7 +209,7 @@ func (list *listScreen) current() *section {
 }
 
 func (current *section) count() int {
-	return len(current.pullRequests) + len(current.issues)
+	return len(current.pullRequests) + len(current.issues) + len(current.notifications)
 }
 
 // key names a row across refreshes; empty past the end.
@@ -177,6 +219,8 @@ func (current *section) key(index int) string {
 		return fmt.Sprintf("%s#%d", current.pullRequests[index].Repository, current.pullRequests[index].Number)
 	case index < len(current.issues):
 		return fmt.Sprintf("%s#%d", current.issues[index].Repository, current.issues[index].Number)
+	case index < len(current.notifications):
+		return current.notifications[index].ID
 	}
 	return ""
 }
@@ -191,6 +235,13 @@ func (current *section) selectedPullRequest() *gh.PullRequestRow {
 func (current *section) selectedIssue() *gh.IssueRow {
 	if current.cursor < len(current.issues) {
 		return &current.issues[current.cursor]
+	}
+	return nil
+}
+
+func (current *section) selectedNotification() *gh.Notification {
+	if current.cursor < len(current.notifications) {
+		return &current.notifications[current.cursor]
 	}
 	return nil
 }
@@ -233,11 +284,7 @@ func (list *listScreen) repositoryFilter(app *App, filters string) string {
 }
 
 func (list *listScreen) fetch(app *App, view config.ViewType, index int, more bool) tea.Cmd {
-	sections := list.prSections
-	if view == config.IssuesView {
-		sections = list.issueSections
-	}
-	current := sections[index]
+	current := list.sectionsOf(view)[index]
 	if !more {
 		current.generation++
 	}
@@ -248,9 +295,12 @@ func (list *listScreen) fetch(app *App, view config.ViewType, index int, more bo
 		after, wanted = current.endCursor, current.limit
 	}
 	query, client, queue := list.query(app, current), app.client, current.mergeQueue
+	includeRead, done := app.config.IncludeReadNotifications, maps.Clone(list.done)
 	return func() tea.Msg {
 		message := sectionLoadedMsg{view: view, index: index, generation: generation, appended: more}
 		switch {
+		case view == config.NotificationsView:
+			message.notifications, message.err = client.Notifications(query, includeRead, done, wanted, after)
 		case view == config.IssuesView:
 			message.issues, message.err = fetchPages(wanted, after, func(limit int, after string) (gh.Page[gh.IssueRow], error) {
 				return client.SearchIssues(query, limit, after)
@@ -293,9 +343,7 @@ func (list *listScreen) fetchAll(app *App) []tea.Cmd {
 	for index := range list.sections() {
 		commands = append(commands, list.fetch(app, list.kind, index, false))
 	}
-	if list.kind == config.IssuesView {
-		list.issuesFetched = true
-	}
+	list.fetched[list.kind] = true
 	return commands
 }
 
@@ -322,11 +370,7 @@ func (list *listScreen) periodic(app *App) []tea.Cmd {
 }
 
 func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
-	sections := list.prSections
-	if message.view == config.IssuesView {
-		sections = list.issueSections
-	}
-	current := sections[message.index]
+	current := list.sectionsOf(message.view)[message.index]
 	if message.generation != current.generation {
 		return nil
 	}
@@ -345,7 +389,17 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 		}
 	}
 	var repeated bool
-	if message.view == config.IssuesView {
+	switch message.view {
+	case config.NotificationsView:
+		page := message.notifications
+		if !message.appended {
+			current.notifications = nil
+		}
+		page.Rows, repeated = withoutSeen(page.Rows, seen, func(row gh.Notification) string { return row.ID })
+		current.notifications = append(current.notifications, page.Rows...)
+		// The API has no total; what is loaded is the count.
+		current.totalCount, current.hasNextPage, current.endCursor = len(current.notifications), page.HasNextPage, page.EndCursor
+	case config.IssuesView:
 		page := message.issues
 		if !message.appended {
 			current.issues = nil
@@ -353,7 +407,7 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 		page.Rows, repeated = withoutSeen(page.Rows, seen, func(row gh.IssueRow) string { return fmt.Sprintf("%s#%d", row.Repository, row.Number) })
 		current.issues = append(current.issues, page.Rows...)
 		current.totalCount, current.hasNextPage, current.endCursor = page.TotalCount, page.HasNextPage, page.EndCursor
-	} else {
+	default:
 		page := message.pullRequests
 		if !message.appended {
 			list.flashChanges(app, current.pullRequests, page.Rows)
@@ -370,7 +424,7 @@ func (list *listScreen) loaded(app *App, message sectionLoadedMsg) tea.Cmd {
 	}
 	current.cursor = clamp(current.cursor, 0, max(current.count()-1, 0))
 	if !message.appended {
-		list.cache[string(message.view)+"|"+list.query(app, current)] = cachedSection{TotalCount: current.totalCount, PullRequests: current.pullRequests, Issues: current.issues}
+		list.cache[string(message.view)+"|"+list.query(app, current)] = cachedSection{TotalCount: current.totalCount, PullRequests: current.pullRequests, Issues: current.issues, Notifications: current.notifications}
 		saveSectionCache(list.cache)
 	}
 	var commands []tea.Cmd
@@ -403,12 +457,19 @@ func withoutSeen[Row any](rows []Row, seen map[string]bool, key func(Row) string
 // j does not fetch every row on the way.
 func (list *listScreen) schedulePreview(app *App) tea.Cmd {
 	list.previewScroll = 0
-	row := list.current().selectedPullRequest()
-	if row == nil || !list.previewOpen || list.kind != config.PRsView {
+	var key pullRequestKey
+	if row := list.current().selectedPullRequest(); row != nil {
+		key = pullRequestKey{row.Repository, row.Number}
+	}
+	// Fetching the PR does not mark its notification read; only opening it does.
+	if notification := list.current().selectedNotification(); notification != nil && notification.Type == "PullRequest" {
+		key = pullRequestKey{notification.Repository, notification.Number}
+	}
+	if key.number == 0 || !list.previewOpen {
 		return nil
 	}
 	list.previewRequest++
-	message := previewMsg{key: pullRequestKey{row.Repository, row.Number}, request: list.previewRequest}
+	message := previewMsg{key: key, request: list.previewRequest}
 	return tea.Tick(150*time.Millisecond, func(time.Time) tea.Msg { return message })
 }
 
@@ -497,13 +558,12 @@ func (list *listScreen) switchSection(app *App, delta int) tea.Cmd {
 	return list.schedulePreview(app)
 }
 
+// switchView cycles PRs → issues → notifications, as gh-dash's `s` does.
 func (list *listScreen) switchView(app *App) tea.Cmd {
-	if list.kind == config.PRsView {
-		list.kind = config.IssuesView
-	} else {
-		list.kind = config.PRsView
-	}
-	if list.kind == config.IssuesView && !list.issuesFetched {
+	list.kind = map[config.ViewType]config.ViewType{
+		config.PRsView: config.IssuesView, config.IssuesView: config.NotificationsView, config.NotificationsView: config.PRsView,
+	}[list.kind]
+	if !list.fetched[list.kind] {
 		return tea.Batch(list.fetchAll(app)...)
 	}
 	return list.schedulePreview(app)
@@ -561,8 +621,32 @@ func (list *listScreen) handleKey(app *App, pressed string) tea.Cmd {
 			})
 		}
 	}
+	if notification := current.selectedNotification(); notification != nil {
+		values := map[string]any{"RepoName": notification.Repository}
+		custom := matchCustom(app.keys.customNotifications, pressed)
+		// gh-dash also runs PR and issue commands on those subjects.
+		switch notification.Type {
+		case "PullRequest":
+			values["PrNumber"] = notification.Number
+			if custom == nil {
+				custom = matchCustom(app.keys.customPRs, pressed)
+			}
+		case "Issue":
+			values["IssueNumber"] = notification.Number
+			if custom == nil {
+				custom = matchCustom(app.keys.customIssues, pressed)
+			}
+		}
+		if custom != nil {
+			return app.runCustomCommand(custom.Command, values)
+		}
+	}
 	if custom := matchCustom(app.keys.customUniversal, pressed); custom != nil {
 		return app.runCustomCommand(custom.Command, map[string]any{})
+	}
+	// Notification keys go before the universal ones so `o` marks the thread read, as in gh-dash.
+	if action := match(app.keys.notifications, pressed); action != "" && list.kind == config.NotificationsView {
+		return list.handleNotificationKey(app, action, current.selectedNotification())
 	}
 
 	url, number := "", 0
@@ -570,6 +654,8 @@ func (list *listScreen) handleKey(app *App, pressed string) tea.Cmd {
 		url, number = pullRequest.URL, pullRequest.Number
 	} else if issue != nil {
 		url, number = issue.URL, issue.Number
+	} else if notification := current.selectedNotification(); notification != nil {
+		url, number = notification.URL, notification.Number
 	}
 
 	switch match(app.keys.universal, pressed) {
@@ -630,8 +716,11 @@ func (list *listScreen) handleKey(app *App, pressed string) tea.Cmd {
 		return tea.Quit
 	}
 
-	if list.kind == config.IssuesView {
+	switch list.kind {
+	case config.IssuesView:
 		return list.handleIssueKey(app, match(app.keys.issues, pressed), issue)
+	case config.NotificationsView:
+		return nil
 	}
 	return list.handlePullRequestKey(app, match(app.keys.prs, pressed), pullRequest)
 }
