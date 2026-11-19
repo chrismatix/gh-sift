@@ -419,12 +419,13 @@ func (list *listScreen) previewDue(app *App, message previewMsg) tea.Cmd {
 	return app.loadPullRequest(message.key, false)
 }
 
-// updateRow copies fresh detail into matching list rows, so the list agrees
-// with what the PR view just showed without a refetch.
+// updateRow copies fresh detail into matching list rows, and its stack into
+// the rows of the same stack, so the list agrees with the PR view without a refetch.
 func (list *listScreen) updateRow(detail *gh.PullRequest) {
 	for _, current := range list.prSections {
 		for index := range current.pullRequests {
-			if row := &current.pullRequests[index]; row.Repository == detail.Repository && row.Number == detail.Number {
+			row := &current.pullRequests[index]
+			if row.Repository == detail.Repository && row.Number == detail.Number {
 				stack, queue := row.Stack, row.Queue
 				*row = detail.PullRequestRow
 				// The row's own stack entries are enough for the list.
@@ -432,6 +433,10 @@ func (list *listScreen) updateRow(detail *gh.PullRequest) {
 					row.Stack = stack
 				}
 				row.Queue = queue
+			} else if detail.Stack != nil && row.Stack != nil && row.Stack.ID == detail.Stack.ID {
+				if position := detail.Stack.PositionOf(row.Number); position > 0 {
+					row.Stack, row.StackPosition = detail.Stack, position
+				}
 			}
 		}
 	}

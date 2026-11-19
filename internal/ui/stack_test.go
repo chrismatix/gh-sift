@@ -157,3 +157,26 @@ func TestStackMergeIsRefused(t *testing.T) {
 		t.Errorf("toast = %q, want the read-only refusal", app.toast.text)
 	}
 }
+
+func TestAFetchedStackReachesTheOtherPRsInIt(t *testing.T) {
+	details := prStacked()
+	app := prTestApp(t, details[1], details[0], details[2])
+	app.expectScreen("#12 Change number 12")
+
+	// GitHub now reports #12 renamed, but only #10's refetch has seen it.
+	stack := details[0]["stackEntry"].(map[string]any)["stack"].(map[string]any)
+	renamed := map[string]any{}
+	for name, value := range stack {
+		renamed[name] = value
+	}
+	entries := stack["entries"].(map[string]any)["nodes"].([]any)
+	top := map[string]any{"position": 3, "pullRequest": map[string]any{"number": 12, "title": "Renamed on GitHub", "state": "OPEN"}}
+	renamed["entries"] = prNodes(entries[0], entries[1], top)
+	details[0]["stackEntry"] = map[string]any{"position": 1, "stack": renamed}
+	app.run(app.loadPullRequest(pullRequestKey{prRepository, 10}, true))
+
+	app.expectScreen("#12 Renamed on GitHub")
+	if title := app.data(pullRequestKey{prRepository, 12}).detail.Stack.Entries[2].Title; title != "Renamed on GitHub" {
+		t.Errorf("#12's cached stack still shows %q", title)
+	}
+}

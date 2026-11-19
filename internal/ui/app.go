@@ -470,6 +470,7 @@ func (app *App) pullRequestLoaded(message pullRequestLoadedMsg) tea.Cmd {
 		return nil
 	}
 	data.detail, data.detailAt = message.detail, time.Now()
+	app.shareStack(message.key, message.detail.Stack)
 	app.list.updateRow(message.detail)
 
 	if app.screen != screenPullRequest {
@@ -496,6 +497,27 @@ func (app *App) pullRequestLoaded(message pullRequestLoadedMsg) tea.Cmd {
 	}
 	app.pullRequest.detailChanged(app)
 	return tea.Batch(commands...)
+}
+
+// shareStack hands a freshly fetched stack to the other cached PRs in it, so
+// moving through a stack never shows an older copy than one already fetched.
+func (app *App) shareStack(fetched pullRequestKey, stack *gh.Stack) {
+	if stack == nil {
+		return
+	}
+	for key, data := range app.store {
+		detail := data.detail
+		if key == fetched || detail == nil || detail.Stack == nil || detail.Stack.ID != stack.ID {
+			continue
+		}
+		// A PR that left the stack keeps its copy until its own refetch.
+		if position := stack.PositionOf(key.number); position > 0 {
+			detail.Stack, detail.StackPosition = stack, position
+			if key == app.pullRequest.key {
+				app.pullRequest.overviewLines = nil
+			}
+		}
+	}
 }
 
 // openPullRequest enters the PR view. The list row, when there is one,

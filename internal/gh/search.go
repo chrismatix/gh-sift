@@ -46,6 +46,16 @@ func (stack *Stack) Neighbour(position, delta int) *StackEntry {
 	return nil
 }
 
+// PositionOf returns where the PR sits in the stack, or 0 when it is not in it.
+func (stack *Stack) PositionOf(number int) int {
+	for _, entry := range stack.Entries {
+		if entry.Number == number {
+			return entry.Position
+		}
+	}
+	return 0
+}
+
 type PullRequestRow struct {
 	ID                string
 	Number            int
